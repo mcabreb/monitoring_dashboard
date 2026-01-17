@@ -24,6 +24,7 @@ class SystemHealthPanel(BasePanel):
         self._memory_label: Label | None = None
         self._memory_bar: ProgressBar | None = None
         self._memory_details: Label | None = None
+        self._memory_sparkline: Sparkline | None = None
         self._load_label: Label | None = None
 
     def compose(self) -> ComposeResult:
@@ -42,11 +43,18 @@ class SystemHealthPanel(BasePanel):
             yield self._memory_bar
             self._memory_details = Label("", id="memory-details")
             yield self._memory_details
+            self._memory_sparkline = Sparkline(id="memory-sparkline")
+            yield self._memory_sparkline
             yield Label("")  # Spacer
             self._load_label = Label("Load: N/A", id="load-label")
             yield self._load_label
 
-    def update(self, metrics: SystemMetrics | None, cpu_history: list[float] | None = None) -> None:
+    def update(
+        self,
+        metrics: SystemMetrics | None,
+        cpu_history: list[float] | None = None,
+        memory_history: list[float] | None = None,
+    ) -> None:
         """Update panel with new metrics.
 
         Args:
@@ -76,6 +84,10 @@ class SystemHealthPanel(BasePanel):
             used = format_bytes(metrics.memory_used)
             total = format_bytes(metrics.memory_total)
             self._memory_details.update(f"{used} / {total}")
+
+        # Update memory sparkline
+        if self._memory_sparkline and memory_history:
+            self._memory_sparkline.update_values(memory_history)
 
         # Update load average
         if self._load_label:

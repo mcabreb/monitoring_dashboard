@@ -5,7 +5,14 @@ from pathlib import Path
 from textual.app import App
 from textual.binding import Binding
 
-from monitor_dashboard.data_sources import SystemHealthCollector
+from monitor_dashboard.data_sources import (
+    BatteryCollector,
+    BluetoothCollector,
+    StorageCollector,
+    SystemHealthCollector,
+)
+from monitor_dashboard.panels.devices import DevicesPanel
+from monitor_dashboard.panels.storage import StoragePanel
 from monitor_dashboard.panels.system_health import SystemHealthPanel
 from monitor_dashboard.screens import ExpandedPanelScreen, HelpOverlay, MainDashboard
 from monitor_dashboard.utils import HistoryBuffer
@@ -35,34 +42,62 @@ class MonitorDashboardApp(App):
 
         # Initialize data collectors and history buffers
         self._system_health_collector = SystemHealthCollector()
+        self._storage_collector = StorageCollector()
+        self._battery_collector = BatteryCollector()
+        self._bluetooth_collector = BluetoothCollector()
         self._cpu_history = HistoryBuffer(maxlen=60)
+        self._memory_history = HistoryBuffer(maxlen=60)
 
         # Store focused panel ID for restoration after expansion
         self._stored_focus_id: str | None = None
 
         # Start 1 Hz refresh timer
-        self.set_interval(1.0, self._refresh_system_health)
+        self.set_interval(1.0, self._refresh_data)
 
-    def _refresh_system_health(self) -> None:
-        """Refresh system health data at 1 Hz.
+    def _refresh_data(self) -> None:
+        """Refresh all panel data at 1 Hz.
 
-        Updates system health panel in both main dashboard and expanded view.
+        Updates system health and storage panels in both main dashboard and expanded view.
         """
         try:
-            # Collect metrics
+            # Collect system health metrics
             metrics = self._system_health_collector.collect()
-
-            # Update CPU history
             if metrics:
                 self._cpu_history.append(metrics.cpu_percent)
+                self._memory_history.append(metrics.memory_percent)
 
-            # Update panel (works in both main dashboard and expanded view)
+            # Update system health panel
             try:
                 panel = self.query_one("#system-health", SystemHealthPanel)
-                panel.update(metrics, self._cpu_history.get_values())
+                panel.update(
+                    metrics,
+                    self._cpu_history.get_values(),
+                    self._memory_history.get_values(),
+                )
             except Exception:
-                # Panel not yet available or not found
                 pass
+
+            # Collect storage metrics
+            disks = self._storage_collector.collect()
+
+            # Update storage panel
+            try:
+                panel = self.query_one("#storage", StoragePanel)
+                panel.update(disks)
+            except Exception:
+                pass
+
+            # Collect battery and Bluetooth metrics
+            battery = self._battery_collector.collect()
+            bluetooth_devices = self._bluetooth_collector.collect()
+
+            # Update devices panel
+            try:
+                panel = self.query_one("#devices", DevicesPanel)
+                panel.update(battery, bluetooth_devices)
+            except Exception:
+                pass
+
         except Exception:
             # Silently handle collection errors
             pass

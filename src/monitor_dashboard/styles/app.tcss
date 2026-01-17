@@ -107,3 +107,16 @@ Label {
     height: 100%;
     background: black;
 }
+
+/* Storage panel disk colors */
+.disk-ok {
+    color: green;
+}
+
+.disk-warning {
+    color: yellow;
+}
+
+.disk-critical {
+    color: red;
+}
