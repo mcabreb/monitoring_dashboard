@@ -87,3 +87,23 @@ Label {
 .status-info {
     color: white;
 }
+
+/* LED indicator colors */
+.led-ok {
+    color: green;
+}
+
+.led-warning {
+    color: yellow;
+}
+
+.led-critical {
+    color: red;
+}
+
+/* Expanded panel screen */
+#expanded-container {
+    width: 100%;
+    height: 100%;
+    background: black;
+}

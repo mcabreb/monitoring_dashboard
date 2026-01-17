@@ -5,7 +5,10 @@ from pathlib import Path
 from textual.app import App
 from textual.binding import Binding
 
-from monitor_dashboard.screens import MainDashboard, HelpOverlay
+from monitor_dashboard.data_sources import SystemHealthCollector
+from monitor_dashboard.panels.system_health import SystemHealthPanel
+from monitor_dashboard.screens import ExpandedPanelScreen, HelpOverlay, MainDashboard
+from monitor_dashboard.utils import HistoryBuffer
 
 
 class MonitorDashboardApp(App):
@@ -16,6 +19,8 @@ class MonitorDashboardApp(App):
     BINDINGS = [
         Binding("tab", "focus_next", "Next Panel"),
         Binding("shift+tab", "focus_previous", "Previous Panel"),
+        Binding("enter", "toggle_expand", "Expand/Collapse"),
+        Binding("escape", "collapse", "Return", show=False),
         Binding("up", "scroll_up", "Scroll Up", show=False),
         Binding("down", "scroll_down", "Scroll Down", show=False),
         Binding("left", "scroll_left", "Scroll Left", show=False),
@@ -27,6 +32,40 @@ class MonitorDashboardApp(App):
     def on_mount(self) -> None:
         """Initialize the app by pushing the main dashboard screen."""
         self.push_screen(MainDashboard())
+
+        # Initialize data collectors and history buffers
+        self._system_health_collector = SystemHealthCollector()
+        self._cpu_history = HistoryBuffer(maxlen=60)
+
+        # Store focused panel ID for restoration after expansion
+        self._stored_focus_id: str | None = None
+
+        # Start 1 Hz refresh timer
+        self.set_interval(1.0, self._refresh_system_health)
+
+    def _refresh_system_health(self) -> None:
+        """Refresh system health data at 1 Hz.
+
+        Updates system health panel in both main dashboard and expanded view.
+        """
+        try:
+            # Collect metrics
+            metrics = self._system_health_collector.collect()
+
+            # Update CPU history
+            if metrics:
+                self._cpu_history.append(metrics.cpu_percent)
+
+            # Update panel (works in both main dashboard and expanded view)
+            try:
+                panel = self.query_one("#system-health", SystemHealthPanel)
+                panel.update(metrics, self._cpu_history.get_values())
+            except Exception:
+                # Panel not yet available or not found
+                pass
+        except Exception:
+            # Silently handle collection errors
+            pass
 
     def action_focus_next(self) -> None:
         """Move focus to next panel in cycle."""
@@ -95,3 +134,34 @@ class MonitorDashboardApp(App):
     def action_show_help(self) -> None:
         """Show the help overlay with keyboard shortcuts."""
         self.push_screen(HelpOverlay())
+
+    def action_toggle_expand(self) -> None:
+        """Toggle between expanded and normal view."""
+        if isinstance(self.screen, ExpandedPanelScreen):
+            # Already expanded, collapse back to main dashboard
+            self.action_collapse()
+        else:
+            # Expand the currently focused panel
+            if self.focused and hasattr(self.focused, "id"):
+                panel_id = self.focused.id
+                # Only expand if it's one of the main panels
+                if panel_id in ["system-health", "storage", "devices", "logs"]:
+                    self._stored_focus_id = panel_id
+                    self.push_screen(ExpandedPanelScreen(panel_id))
+
+    def action_collapse(self) -> None:
+        """Return to main dashboard from expanded view."""
+        if isinstance(self.screen, ExpandedPanelScreen):
+            self.pop_screen()
+            # Restore focus after screen transition
+            self.call_later(self._restore_focus)
+
+    def _restore_focus(self) -> None:
+        """Restore focus to the previously focused panel."""
+        if self._stored_focus_id:
+            try:
+                panel = self.query_one(f"#{self._stored_focus_id}")
+                panel.focus()
+            except Exception:
+                # Panel not found, ignore
+                pass
