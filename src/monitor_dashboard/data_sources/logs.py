@@ -1,7 +1,6 @@
-"""System logs data collection using dmesg."""
+"""System logs data collection using journalctl."""
 
 import logging
-import re
 import subprocess
 from datetime import datetime
 
@@ -11,13 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 class LogsCollector:
-    """Collects system logs using dmesg command."""
+    """Collects system logs using journalctl command."""
 
-    # Regex to parse dmesg output with severity
-    DMESG_PATTERN = re.compile(r"\[.*?\]\s*<(\d)>\s*(.*)")
-
-    # Severity level mapping (kernel log levels)
-    SEVERITY_MAP = {
+    # journalctl priority mapping
+    PRIORITY_MAP = {
         "0": LogSeverity.EMERGENCY,
         "1": LogSeverity.ALERT,
         "2": LogSeverity.CRITICAL,
@@ -35,81 +31,97 @@ class LogsCollector:
             max_entries: Maximum number of log entries to return.
 
         Returns:
-            List of LogEntry objects, most recent first.
+            List of LogEntry objects, most recent last.
         """
         try:
-            # Run dmesg with human-readable timestamps
+            # Use journalctl to get recent logs (more accessible than dmesg)
             result = subprocess.run(
-                ["dmesg", "-T", "-l", "err,warn,info"],
+                [
+                    "journalctl",
+                    "--no-pager",
+                    "-n", str(max_entries),
+                    "-p", "warning",  # warning and above (err, crit, alert, emerg)
+                    "-o", "short-iso",
+                ],
                 capture_output=True,
                 text=True,
-                timeout=2,
+                timeout=5,
             )
 
             if result.returncode != 0:
-                logger.warning(f"dmesg failed: {result.stderr}")
+                # Fallback: try without priority filter
+                result = subprocess.run(
+                    [
+                        "journalctl",
+                        "--no-pager",
+                        "-n", str(max_entries),
+                        "-o", "short-iso",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+
+            if result.returncode != 0:
                 return []
 
             lines = result.stdout.strip().split("\n")
             entries: list[LogEntry] = []
 
-            for line in lines[-max_entries:]:
-                entry = self._parse_log_line(line)
+            for line in lines:
+                entry = self._parse_journal_line(line)
                 if entry:
                     entries.append(entry)
 
             return entries
 
-        except PermissionError:
-            logger.warning("Permission denied accessing dmesg")
-            return []
         except FileNotFoundError:
-            logger.warning("dmesg command not found")
+            logger.debug("journalctl not found")
             return []
         except Exception as e:
-            logger.error(f"Failed to collect logs: {e}")
+            logger.debug(f"Failed to collect logs: {e}")
             return []
 
-    def _parse_log_line(self, line: str) -> LogEntry | None:
-        """Parse a single dmesg log line.
+    def _parse_journal_line(self, line: str) -> LogEntry | None:
+        """Parse a journalctl log line.
 
         Args:
-            line: Raw log line from dmesg.
+            line: Raw log line from journalctl (short-iso format).
 
         Returns:
             LogEntry if parsing succeeded, None otherwise.
         """
         try:
-            # Simple parsing: extract timestamp and message
-            # Format: [timestamp] message
-            if not line.strip():
+            if not line.strip() or line.startswith("--"):
                 return None
 
-            # For simplicity, assume INFO severity if can't determine
-            severity = LogSeverity.INFO
-            message = line
+            # short-iso format: "2026-01-17T13:45:00+0100 hostname unit[pid]: message"
+            parts = line.split(" ", 3)
+            if len(parts) < 4:
+                return None
 
-            # Try to extract timestamp (dmesg -T format)
-            if line.startswith("["):
-                parts = line.split("]", 1)
-                if len(parts) == 2:
-                    timestamp_str = parts[0][1:].strip()
-                    message = parts[1].strip()
+            timestamp_str = parts[0]
+            message = parts[3] if len(parts) > 3 else line
 
-                    # Parse timestamp
-                    try:
-                        timestamp = datetime.strptime(timestamp_str, "%a %b %d %H:%M:%S %Y")
-                    except:
-                        timestamp = datetime.now()
-                else:
-                    timestamp = datetime.now()
-            else:
+            # Parse timestamp
+            try:
+                # Handle timezone offset
+                timestamp = datetime.fromisoformat(timestamp_str.replace("+0100", "+01:00").replace("+0000", "+00:00"))
+            except:
                 timestamp = datetime.now()
+
+            # Determine severity from keywords in message
+            severity = LogSeverity.INFO
+            msg_lower = message.lower()
+            if "error" in msg_lower or "fail" in msg_lower or "fatal" in msg_lower:
+                severity = LogSeverity.ERROR
+            elif "warn" in msg_lower:
+                severity = LogSeverity.WARNING
 
             return LogEntry(
                 timestamp=timestamp,
                 severity=severity,
-                message=message,
+                message=message[:200],  # Truncate long messages
                 raw=line,
             )
 

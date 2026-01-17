@@ -57,14 +57,16 @@ class MonitorDashboardApp(App):
         # Store focused panel ID for restoration after expansion
         self._stored_focus_id: str | None = None
 
-        # Start 1 Hz refresh timer
-        self.set_interval(1.0, self._refresh_data)
+        # Start refresh timers
+        # Fast refresh (1s): System health (CPU, memory, load)
+        self.set_interval(1.0, self._refresh_system_health)
+        # Slow refresh (10s): Storage, battery, Bluetooth, logs, system info
+        self.set_interval(10.0, self._refresh_slow_data)
+        # Initial slow data refresh
+        self.call_later(self._refresh_slow_data)
 
-    def _refresh_data(self) -> None:
-        """Refresh all panel data at 1 Hz.
-
-        Updates system health and storage panels in both main dashboard and expanded view.
-        """
+    def _refresh_system_health(self) -> None:
+        """Refresh system health data at 1 Hz."""
         try:
             # Collect system health metrics
             metrics = self._system_health_collector.collect()
@@ -74,7 +76,7 @@ class MonitorDashboardApp(App):
 
             # Update system health panel
             try:
-                panel = self.query_one("#system-health", SystemHealthPanel)
+                panel = self.screen.query_one("#system-health", SystemHealthPanel)
                 panel.update(
                     metrics,
                     self._cpu_history.get_values(),
@@ -83,12 +85,21 @@ class MonitorDashboardApp(App):
             except Exception:
                 pass
 
+        except Exception:
+            pass
+
+    def _refresh_slow_data(self) -> None:
+        """Refresh slow-changing data every 10 seconds.
+
+        Updates storage, battery, Bluetooth, logs, and system info panels.
+        """
+        try:
             # Collect storage metrics
             disks = self._storage_collector.collect()
 
             # Update storage panel
             try:
-                panel = self.query_one("#storage", StoragePanel)
+                panel = self.screen.query_one("#storage", StoragePanel)
                 panel.update(disks)
             except Exception:
                 pass
@@ -99,7 +110,7 @@ class MonitorDashboardApp(App):
 
             # Update devices panel
             try:
-                panel = self.query_one("#devices", DevicesPanel)
+                panel = self.screen.query_one("#devices", DevicesPanel)
                 panel.update(battery, bluetooth_devices)
             except Exception:
                 pass
@@ -109,7 +120,7 @@ class MonitorDashboardApp(App):
 
             # Update logs panel
             try:
-                panel = self.query_one("#logs", LogsPanel)
+                panel = self.screen.query_one("#logs", LogsPanel)
                 panel.update(logs)
             except Exception:
                 pass
@@ -119,23 +130,26 @@ class MonitorDashboardApp(App):
 
             # Update info bar
             try:
-                panel = self.query_one("#info-bar", InfoBar)
+                panel = self.screen.query_one("#info-bar", InfoBar)
                 panel.update(system_info)
             except Exception:
                 pass
 
         except Exception:
-            # Silently handle collection errors
             pass
 
     def action_focus_next(self) -> None:
         """Move focus to next panel in cycle."""
+        # Skip tab navigation in expanded view
+        if isinstance(self.screen, ExpandedPanelScreen):
+            return
+
         # Get all focusable panels (exclude InfoBar)
         panels = [
-            self.query_one("#system-health", self.screen),
-            self.query_one("#storage", self.screen),
-            self.query_one("#devices", self.screen),
-            self.query_one("#logs", self.screen),
+            self.screen.query_one("#system-health"),
+            self.screen.query_one("#storage"),
+            self.screen.query_one("#devices"),
+            self.screen.query_one("#logs"),
         ]
 
         # Find current focused panel and move to next
@@ -154,12 +168,16 @@ class MonitorDashboardApp(App):
 
     def action_focus_previous(self) -> None:
         """Move focus to previous panel in cycle."""
+        # Skip tab navigation in expanded view
+        if isinstance(self.screen, ExpandedPanelScreen):
+            return
+
         # Get all focusable panels (exclude InfoBar)
         panels = [
-            self.query_one("#system-health", self.screen),
-            self.query_one("#storage", self.screen),
-            self.query_one("#devices", self.screen),
-            self.query_one("#logs", self.screen),
+            self.screen.query_one("#system-health"),
+            self.screen.query_one("#storage"),
+            self.screen.query_one("#devices"),
+            self.screen.query_one("#logs"),
         ]
 
         # Find current focused panel and move to previous
@@ -221,7 +239,7 @@ class MonitorDashboardApp(App):
         """Restore focus to the previously focused panel."""
         if self._stored_focus_id:
             try:
-                panel = self.query_one(f"#{self._stored_focus_id}")
+                panel = self.screen.query_one(f"#{self._stored_focus_id}")
                 panel.focus()
             except Exception:
                 # Panel not found, ignore

@@ -56,10 +56,11 @@ BasePanel:focus {
 /* Info bar - full width at bottom */
 #info-bar {
     dock: bottom;
-    height: 3;
+    height: 4;
     width: 100%;
     border: solid white;
     background: black;
+    padding: 0 1;
 }
 
 /* Labels within panels */
@@ -69,6 +70,16 @@ Label {
     width: 100%;
     height: auto;
     content-align: center middle;
+}
+
+/* Info bar label - left aligned */
+#info-bar Label {
+    content-align: left middle;
+}
+
+/* Logs panel - left aligned */
+#logs Label {
+    content-align: left middle;
 }
 
 /* Color definitions for status indicators */

@@ -36,7 +36,6 @@ class SystemHealthPanel(BasePanel):
             yield self._cpu_bar
             self._cpu_sparkline = Sparkline(id="cpu-sparkline")
             yield self._cpu_sparkline
-            yield Label("")  # Spacer
             self._memory_label = Label("Memory: N/A", id="memory-label")
             yield self._memory_label
             self._memory_bar = ProgressBar(total=100, show_eta=False, id="memory-bar")
@@ -45,7 +44,6 @@ class SystemHealthPanel(BasePanel):
             yield self._memory_details
             self._memory_sparkline = Sparkline(id="memory-sparkline")
             yield self._memory_sparkline
-            yield Label("")  # Spacer
             self._load_label = Label("Load: N/A", id="load-label")
             yield self._load_label
 

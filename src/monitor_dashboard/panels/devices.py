@@ -40,9 +40,9 @@ class DevicesPanel(BasePanel):
         # Clear existing content
         self._container.remove_children()
 
-        # Display battery
+        # Display laptop battery
         if battery and battery.is_present:
-            self._container.mount(Label(f"Battery: {int(battery.percent)}% ({battery.state.value})"))
+            self._container.mount(Label(f"Laptop: {int(battery.percent)}% ({battery.state.value})"))
             bar = ProgressBar(total=100, show_eta=False)
             bar.update(progress=battery.percent)
             self._container.mount(bar)
