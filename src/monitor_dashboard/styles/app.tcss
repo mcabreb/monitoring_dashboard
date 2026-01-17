@@ -1,0 +1,89 @@
+/* GEM-style Monitoring Dashboard Theme */
+
+/* Main screen styling */
+Screen {
+    background: black;
+}
+
+#dashboard-container {
+    width: 100%;
+    height: 100%;
+    background: black;
+}
+
+/* Grid layout for main panels */
+#main-grid {
+    grid-size: 2 2;
+    grid-rows: 1fr 1fr;
+    grid-columns: 1fr 1fr;
+    height: 1fr;
+    width: 100%;
+}
+
+/* Base panel styling - GEM aesthetic */
+BasePanel {
+    border: solid white;
+    background: black;
+    padding: 1;
+    color: white;
+}
+
+BasePanel:focus {
+    border: double green;
+}
+
+/* Individual panel positioning */
+#system-health {
+    row-span: 1;
+    column-span: 1;
+}
+
+#storage {
+    row-span: 1;
+    column-span: 1;
+}
+
+#devices {
+    row-span: 1;
+    column-span: 1;
+}
+
+#logs {
+    row-span: 1;
+    column-span: 1;
+}
+
+/* Info bar - full width at bottom */
+#info-bar {
+    dock: bottom;
+    height: 3;
+    width: 100%;
+    border: solid white;
+    background: black;
+}
+
+/* Labels within panels */
+Label {
+    color: $text;
+    background: transparent;
+    width: 100%;
+    height: auto;
+    content-align: center middle;
+}
+
+/* Color definitions for status indicators */
+.status-ok {
+    color: green;
+}
+
+.status-warning {
+    color: yellow;
+}
+
+.status-critical {
+    color: red;
+}
+
+.status-info {
+    color: white;
+}
