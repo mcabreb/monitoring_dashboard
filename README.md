@@ -1,2 +1,2 @@
 # monitoring_dashboard
-A TUI monitoring dashboard for Ubuntu in Python
+A system monitoring dashboard TUI for Ubuntu in Python
