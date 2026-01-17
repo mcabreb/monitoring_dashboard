@@ -227,13 +227,16 @@ class MonitorDashboardApp(App):
                 if panel_id in ["system-health", "storage", "devices", "logs"]:
                     self._stored_focus_id = panel_id
                     self.push_screen(ExpandedPanelScreen(panel_id))
+                    # Trigger immediate refresh after screen transition
+                    self.call_later(self._refresh_all)
 
     def action_collapse(self) -> None:
         """Return to main dashboard from expanded view."""
         if isinstance(self.screen, ExpandedPanelScreen):
             self.pop_screen()
-            # Restore focus after screen transition
+            # Restore focus and refresh after screen transition
             self.call_later(self._restore_focus)
+            self.call_later(self._refresh_all)
 
     def _restore_focus(self) -> None:
         """Restore focus to the previously focused panel."""
@@ -244,3 +247,8 @@ class MonitorDashboardApp(App):
             except Exception:
                 # Panel not found, ignore
                 pass
+
+    def _refresh_all(self) -> None:
+        """Refresh all panel data immediately."""
+        self._refresh_system_health()
+        self._refresh_slow_data()
