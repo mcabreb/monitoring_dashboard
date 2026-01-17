@@ -8,10 +8,14 @@ from textual.binding import Binding
 from monitor_dashboard.data_sources import (
     BatteryCollector,
     BluetoothCollector,
+    LogsCollector,
     StorageCollector,
     SystemHealthCollector,
+    SystemInfoCollector,
 )
 from monitor_dashboard.panels.devices import DevicesPanel
+from monitor_dashboard.panels.info_bar import InfoBar
+from monitor_dashboard.panels.logs import LogsPanel
 from monitor_dashboard.panels.storage import StoragePanel
 from monitor_dashboard.panels.system_health import SystemHealthPanel
 from monitor_dashboard.screens import ExpandedPanelScreen, HelpOverlay, MainDashboard
@@ -45,6 +49,8 @@ class MonitorDashboardApp(App):
         self._storage_collector = StorageCollector()
         self._battery_collector = BatteryCollector()
         self._bluetooth_collector = BluetoothCollector()
+        self._logs_collector = LogsCollector()
+        self._system_info_collector = SystemInfoCollector()
         self._cpu_history = HistoryBuffer(maxlen=60)
         self._memory_history = HistoryBuffer(maxlen=60)
 
@@ -95,6 +101,26 @@ class MonitorDashboardApp(App):
             try:
                 panel = self.query_one("#devices", DevicesPanel)
                 panel.update(battery, bluetooth_devices)
+            except Exception:
+                pass
+
+            # Collect logs
+            logs = self._logs_collector.collect(max_entries=100)
+
+            # Update logs panel
+            try:
+                panel = self.query_one("#logs", LogsPanel)
+                panel.update(logs)
+            except Exception:
+                pass
+
+            # Collect system info
+            system_info = self._system_info_collector.collect()
+
+            # Update info bar
+            try:
+                panel = self.query_one("#info-bar", InfoBar)
+                panel.update(system_info)
             except Exception:
                 pass
 

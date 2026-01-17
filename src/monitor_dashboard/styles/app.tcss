@@ -120,3 +120,16 @@ Label {
 .disk-critical {
     color: red;
 }
+
+/* Log severity colors */
+.log-error {
+    color: red;
+}
+
+.log-warning {
+    color: yellow;
+}
+
+.log-info {
+    color: white;
+}

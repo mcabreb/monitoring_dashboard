@@ -6,7 +6,9 @@ from monitor_dashboard.models.battery import (
     BluetoothDevice,
     DeviceType,
 )
+from monitor_dashboard.models.logs import LogEntry, LogSeverity
 from monitor_dashboard.models.metrics import DiskInfo, SystemMetrics
+from monitor_dashboard.models.system_info import SystemInfo
 
 __all__ = [
     "BatteryState",
@@ -14,5 +16,8 @@ __all__ = [
     "BluetoothDevice",
     "DeviceType",
     "DiskInfo",
+    "LogEntry",
+    "LogSeverity",
+    "SystemInfo",
     "SystemMetrics",
 ]
