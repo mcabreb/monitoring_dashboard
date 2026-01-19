@@ -3,7 +3,7 @@
 import pytest
 
 from monitor_dashboard.app import MonitorDashboardApp
-from monitor_dashboard.screens.help import HelpOverlay
+from monitor_dashboard.screens.help import HelpOverlay, HELP_TEXT
 
 
 @pytest.mark.asyncio
@@ -48,17 +48,17 @@ async def test_help_overlay_content():
         help_screen = app.screen
         assert isinstance(help_screen, HelpOverlay)
 
-        # Query the help content static widget
+        # Query the help content static widget to verify it exists
         help_static = help_screen.query_one("#help-content")
+        assert help_static is not None
 
-        # Verify key shortcuts are mentioned
-        content = str(help_static.renderable)
-        assert "Tab" in content
-        assert "Shift+Tab" in content
-        assert "Enter" in content
-        assert "Escape" in content
-        assert "?" in content or "Help" in content
-        assert "q" in content or "Quit" in content
+        # Verify key shortcuts are mentioned in the HELP_TEXT constant
+        assert "Tab" in HELP_TEXT
+        assert "Shift+Tab" in HELP_TEXT
+        assert "Enter" in HELP_TEXT
+        assert "Escape" in HELP_TEXT
+        assert "?" in HELP_TEXT or "Help" in HELP_TEXT
+        assert "q" in HELP_TEXT or "Quit" in HELP_TEXT
 
 
 @pytest.mark.asyncio

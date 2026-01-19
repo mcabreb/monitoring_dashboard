@@ -1,38 +1,42 @@
-"""Devices panel for battery and Bluetooth devices."""
+"""Devices panel for battery, Bluetooth devices, and storage."""
 
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import VerticalScroll
 from textual.widgets import Label, ProgressBar
 
 from monitor_dashboard.models.battery import BatteryStatus, BluetoothDevice
+from monitor_dashboard.models.metrics import DiskInfo
 from monitor_dashboard.panels.base import BasePanel
+from monitor_dashboard.utils.formatting import format_bytes
 
 
 class DevicesPanel(BasePanel):
-    """Panel displaying device information."""
+    """Panel displaying device and storage information."""
 
     BORDER_TITLE = "● Devices"
 
     def __init__(self, **kwargs) -> None:
         """Initialize devices panel."""
         super().__init__(**kwargs)
-        self._container: Vertical | None = None
+        self._container: VerticalScroll | None = None
 
     def compose(self) -> ComposeResult:
         """Compose the Devices panel content."""
-        self._container = Vertical()
+        self._container = VerticalScroll()
         yield self._container
 
     def update(
         self,
         battery: BatteryStatus | None,
         bluetooth_devices: list[BluetoothDevice] | None,
+        disks: list[DiskInfo] | None = None,
     ) -> None:
-        """Update panel with device information.
+        """Update panel with device and storage information.
 
         Args:
             battery: Battery status, or None if unavailable.
             bluetooth_devices: List of Bluetooth devices, or None if unavailable.
+            disks: List of disk info objects, or None if unavailable.
         """
         if not self._container:
             return
@@ -59,10 +63,28 @@ class DevicesPanel(BasePanel):
             self._container.mount(Label(""))
             self._container.mount(Label(f"Bluetooth: {len(bluetooth_devices)} device(s)"))
             for dev in bluetooth_devices:
-                dev_label = f"{dev.name}"
+                dev_label = f"  {dev.name}"
                 if dev.battery_percent is not None:
                     dev_label += f" ({dev.battery_percent}%)"
                 self._container.mount(Label(dev_label))
         else:
             self._container.mount(Label(""))
             self._container.mount(Label("Bluetooth: No devices"))
+
+        # Display disk storage
+        if disks:
+            self._container.mount(Label(""))
+            self._container.mount(Label("Storage:"))
+            for disk in disks:
+                used = format_bytes(disk.used)
+                total = format_bytes(disk.total)
+                label_text = f"  {disk.mount_point}: {used}/{total} ({int(disk.percent)}%)"
+
+                label = Label(label_text)
+                if disk.percent >= 90:
+                    label.add_class("disk-critical")
+                elif disk.percent >= 70:
+                    label.add_class("disk-warning")
+                else:
+                    label.add_class("disk-ok")
+                self._container.mount(label)

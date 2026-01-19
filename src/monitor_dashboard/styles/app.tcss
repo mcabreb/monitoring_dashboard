@@ -38,7 +38,7 @@ BasePanel:focus {
     column-span: 1;
 }
 
-#storage {
+#processes {
     row-span: 1;
     column-span: 1;
 }
@@ -79,6 +79,11 @@ Label {
 
 /* Logs panel - left aligned */
 #logs Label {
+    content-align: left middle;
+}
+
+/* Processes panel - left aligned */
+#processes Label {
     content-align: left middle;
 }
 
@@ -143,4 +148,18 @@ Label {
 
 .log-info {
     color: white;
+}
+
+/* Process list colors */
+.process-header {
+    color: cyan;
+    text-style: bold;
+}
+
+.process-high {
+    color: red;
+}
+
+.process-medium {
+    color: yellow;
 }

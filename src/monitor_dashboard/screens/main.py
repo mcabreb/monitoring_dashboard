@@ -4,11 +4,11 @@ from textual.containers import Container, Grid
 from textual.screen import Screen
 
 from monitor_dashboard.panels import (
-    SystemHealthPanel,
-    StoragePanel,
     DevicesPanel,
-    LogsPanel,
     InfoBar,
+    LogsPanel,
+    ProcessesPanel,
+    SystemHealthPanel,
 )
 
 
@@ -20,7 +20,7 @@ class MainDashboard(Screen):
         with Container(id="dashboard-container"):
             with Grid(id="main-grid"):
                 yield SystemHealthPanel(id="system-health")
-                yield StoragePanel(id="storage")
+                yield ProcessesPanel(id="processes")
                 yield DevicesPanel(id="devices")
                 yield LogsPanel(id="logs")
             yield InfoBar(id="info-bar")

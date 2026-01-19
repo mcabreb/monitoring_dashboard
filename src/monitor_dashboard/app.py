@@ -9,6 +9,7 @@ from monitor_dashboard.data_sources import (
     BatteryCollector,
     BluetoothCollector,
     LogsCollector,
+    ProcessCollector,
     StorageCollector,
     SystemHealthCollector,
     SystemInfoCollector,
@@ -16,7 +17,7 @@ from monitor_dashboard.data_sources import (
 from monitor_dashboard.panels.devices import DevicesPanel
 from monitor_dashboard.panels.info_bar import InfoBar
 from monitor_dashboard.panels.logs import LogsPanel
-from monitor_dashboard.panels.storage import StoragePanel
+from monitor_dashboard.panels.processes import ProcessesPanel
 from monitor_dashboard.panels.system_health import SystemHealthPanel
 from monitor_dashboard.screens import ExpandedPanelScreen, HelpOverlay, MainDashboard
 from monitor_dashboard.utils import HistoryBuffer
@@ -36,6 +37,7 @@ class MonitorDashboardApp(App):
         Binding("down", "scroll_down", "Scroll Down", show=False),
         Binding("left", "scroll_left", "Scroll Left", show=False),
         Binding("right", "scroll_right", "Scroll Right", show=False),
+        Binding("p", "cycle_process_sort", "Sort Processes"),
         Binding("question_mark", "show_help", "Help"),
         Binding("q", "quit", "Quit"),
     ]
@@ -47,6 +49,7 @@ class MonitorDashboardApp(App):
         # Initialize data collectors and history buffers
         self._system_health_collector = SystemHealthCollector()
         self._storage_collector = StorageCollector()
+        self._process_collector = ProcessCollector()
         self._battery_collector = BatteryCollector()
         self._bluetooth_collector = BluetoothCollector()
         self._logs_collector = LogsCollector()
@@ -91,16 +94,17 @@ class MonitorDashboardApp(App):
     def _refresh_slow_data(self) -> None:
         """Refresh slow-changing data every 10 seconds.
 
-        Updates storage, battery, Bluetooth, logs, and system info panels.
+        Updates processes, devices (storage/battery/Bluetooth), logs, and system info.
         """
         try:
-            # Collect storage metrics
+            # Collect storage metrics (for devices panel)
             disks = self._storage_collector.collect()
 
-            # Update storage panel
+            # Collect and update processes panel
             try:
-                panel = self.screen.query_one("#storage", StoragePanel)
-                panel.update(disks)
+                processes = self._process_collector.collect(max_processes=50)
+                panel = self.screen.query_one("#processes", ProcessesPanel)
+                panel.update(processes)
             except Exception:
                 pass
 
@@ -108,10 +112,10 @@ class MonitorDashboardApp(App):
             battery = self._battery_collector.collect()
             bluetooth_devices = self._bluetooth_collector.collect()
 
-            # Update devices panel
+            # Update devices panel (now includes storage)
             try:
                 panel = self.screen.query_one("#devices", DevicesPanel)
-                panel.update(battery, bluetooth_devices)
+                panel.update(battery, bluetooth_devices, disks)
             except Exception:
                 pass
 
@@ -147,7 +151,7 @@ class MonitorDashboardApp(App):
         # Get all focusable panels (exclude InfoBar)
         panels = [
             self.screen.query_one("#system-health"),
-            self.screen.query_one("#storage"),
+            self.screen.query_one("#processes"),
             self.screen.query_one("#devices"),
             self.screen.query_one("#logs"),
         ]
@@ -175,7 +179,7 @@ class MonitorDashboardApp(App):
         # Get all focusable panels (exclude InfoBar)
         panels = [
             self.screen.query_one("#system-health"),
-            self.screen.query_one("#storage"),
+            self.screen.query_one("#processes"),
             self.screen.query_one("#devices"),
             self.screen.query_one("#logs"),
         ]
@@ -214,6 +218,14 @@ class MonitorDashboardApp(App):
         """Show the help overlay with keyboard shortcuts."""
         self.push_screen(HelpOverlay())
 
+    def action_cycle_process_sort(self) -> None:
+        """Cycle the sort column in the Processes panel."""
+        try:
+            panel = self.screen.query_one("#processes", ProcessesPanel)
+            panel.cycle_sort()
+        except Exception:
+            pass
+
     def action_toggle_expand(self) -> None:
         """Toggle between expanded and normal view."""
         if isinstance(self.screen, ExpandedPanelScreen):
@@ -224,7 +236,7 @@ class MonitorDashboardApp(App):
             if self.focused and hasattr(self.focused, "id"):
                 panel_id = self.focused.id
                 # Only expand if it's one of the main panels
-                if panel_id in ["system-health", "storage", "devices", "logs"]:
+                if panel_id in ["system-health", "processes", "devices", "logs"]:
                     self._stored_focus_id = panel_id
                     self.push_screen(ExpandedPanelScreen(panel_id))
                     # Trigger immediate refresh after screen transition

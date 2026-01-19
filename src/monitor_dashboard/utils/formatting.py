@@ -21,6 +21,9 @@ def format_bytes(bytes_value: int) -> str:
     for unit_name, unit_size in units:
         if bytes_value >= unit_size:
             value = bytes_value / unit_size
+            # Use integer formatting for bytes, decimal for larger units
+            if unit_name == "B":
+                return f"{int(value)} {unit_name}"
             return f"{value:.1f} {unit_name}"
 
     return f"{bytes_value} B"

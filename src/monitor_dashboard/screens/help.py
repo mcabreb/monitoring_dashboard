@@ -11,6 +11,7 @@ HELP_TEXT = """[b]Keyboard Help[/b]
 [green]Shift+Tab[/green]    Previous panel
 [green]Enter[/green]        Expand/collapse panel
 [green]Escape[/green]       Return to dashboard
+[green]p[/green]            Cycle process sort column
 [green]?[/green]            Show this help
 [green]q[/green]            Quit application
 

@@ -4,10 +4,10 @@ from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import Screen
 
-from monitor_dashboard.panels.system_health import SystemHealthPanel
-from monitor_dashboard.panels.storage import StoragePanel
 from monitor_dashboard.panels.devices import DevicesPanel
 from monitor_dashboard.panels.logs import LogsPanel
+from monitor_dashboard.panels.processes import ProcessesPanel
+from monitor_dashboard.panels.system_health import SystemHealthPanel
 
 
 class ExpandedPanelScreen(Screen):
@@ -42,8 +42,8 @@ class ExpandedPanelScreen(Screen):
         match self.panel_id:
             case "system-health":
                 return SystemHealthPanel(id=self.panel_id)
-            case "storage":
-                return StoragePanel(id=self.panel_id)
+            case "processes":
+                return ProcessesPanel(id=self.panel_id)
             case "devices":
                 return DevicesPanel(id=self.panel_id)
             case "logs":
