@@ -1,8 +1,8 @@
-"""Devices panel for battery, Bluetooth devices, and storage."""
+"""Devices panel for battery and storage information."""
 
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
-from textual.widgets import Label, ProgressBar
+from textual.widgets import Label
 
 from monitor_dashboard.models.battery import BatteryStatus, BluetoothDevice
 from monitor_dashboard.models.metrics import DiskInfo
@@ -11,7 +11,7 @@ from monitor_dashboard.utils.formatting import format_bytes
 
 
 class DevicesPanel(BasePanel):
-    """Panel displaying device and storage information."""
+    """Panel displaying battery and storage information."""
 
     BORDER_TITLE = "● Devices"
 
@@ -41,50 +41,80 @@ class DevicesPanel(BasePanel):
         if not self._container:
             return
 
-        # Clear existing content
         self._container.remove_children()
 
-        # Display laptop battery
-        if battery and battery.is_present:
-            self._container.mount(Label(f"Laptop: {int(battery.percent)}% ({battery.state.value})"))
-            bar = ProgressBar(total=100, show_eta=False)
-            bar.update(progress=battery.percent)
-            self._container.mount(bar)
+        # === BATTERY SECTION ===
+        self._container.mount(Label("Battery:"))
 
+        # Laptop battery - white label, colored value
+        if battery and battery.is_present:
+            bat_color = self._get_battery_color(battery.percent)
+            bat_value = f"[{bat_color}]{int(battery.percent)}% ({battery.state.value})[/{bat_color}]"
+            status_text = f"  Laptop: {bat_value}"
             if battery.time_remaining:
                 hours = battery.time_remaining // 3600
                 minutes = (battery.time_remaining % 3600) // 60
-                self._container.mount(Label(f"Time: {hours}h {minutes}m"))
+                status_text += f" - {hours}h {minutes}m"
+            self._container.mount(Label(status_text))
         else:
-            self._container.mount(Label("Battery: Not present"))
+            self._container.mount(Label("  Laptop: Not present"))
 
-        # Display Bluetooth devices
+        # Bluetooth devices with battery info - white label, colored value
         if bluetooth_devices:
-            self._container.mount(Label(""))
-            self._container.mount(Label(f"Bluetooth: {len(bluetooth_devices)} device(s)"))
             for dev in bluetooth_devices:
-                dev_label = f"  {dev.name}"
                 if dev.battery_percent is not None:
-                    dev_label += f" ({dev.battery_percent}%)"
-                self._container.mount(Label(dev_label))
+                    bat_color = self._get_battery_color(dev.battery_percent)
+                    bat_value = f"[{bat_color}]{dev.battery_percent}%[/{bat_color}]"
+                    self._container.mount(Label(f"  {dev.name}: {bat_value}"))
+                else:
+                    self._container.mount(Label(f"  {dev.name}: connected"))
         else:
-            self._container.mount(Label(""))
-            self._container.mount(Label("Bluetooth: No devices"))
+            self._container.mount(Label("  No Bluetooth devices"))
 
-        # Display disk storage
+        # === SEPARATOR ===
+        self._container.mount(Label(""))
+
+        # === STORAGE SECTION ===
+        self._container.mount(Label("Storage:"))
+
         if disks:
-            self._container.mount(Label(""))
-            self._container.mount(Label("Storage:"))
             for disk in disks:
                 used = format_bytes(disk.used)
                 total = format_bytes(disk.total)
-                label_text = f"  {disk.mount_point}: {used}/{total} ({int(disk.percent)}%)"
+                disk_color = self._get_disk_color(disk.percent)
+                disk_value = f"[{disk_color}]{used}/{total} ({int(disk.percent)}%)[/{disk_color}]"
+                self._container.mount(Label(f"  {disk.mount_point}: {disk_value}"))
+        else:
+            self._container.mount(Label("  No storage info"))
 
-                label = Label(label_text)
-                if disk.percent >= 90:
-                    label.add_class("disk-critical")
-                elif disk.percent >= 70:
-                    label.add_class("disk-warning")
-                else:
-                    label.add_class("disk-ok")
-                self._container.mount(label)
+    def _get_battery_color(self, percent: float) -> str:
+        """Get color for battery percentage.
+
+        Args:
+            percent: Battery percentage (0-100).
+
+        Returns:
+            Color name for Rich markup.
+        """
+        if percent > 50:
+            return "green"
+        elif percent >= 20:
+            return "yellow"
+        else:
+            return "red"
+
+    def _get_disk_color(self, percent: float) -> str:
+        """Get color for disk usage percentage.
+
+        Args:
+            percent: Disk usage percentage (0-100).
+
+        Returns:
+            Color name for Rich markup.
+        """
+        if percent >= 90:
+            return "red"
+        elif percent >= 70:
+            return "yellow"
+        else:
+            return "green"

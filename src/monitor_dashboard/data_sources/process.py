@@ -44,7 +44,7 @@ class ProcessCollector:
                     # Get command - prefer cmdline, fall back to name
                     cmdline = info.get("cmdline")
                     if cmdline:
-                        command = " ".join(cmdline)[:50]  # Truncate long commands
+                        command = " ".join(cmdline)
                     else:
                         command = info.get("name", "unknown")
 

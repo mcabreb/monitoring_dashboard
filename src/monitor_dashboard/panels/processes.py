@@ -120,15 +120,14 @@ class ProcessesPanel(BasePanel):
 
         # Process rows
         for proc in sorted_processes:
-            # Format each field
+            # Format each field - no truncation, let view handle clipping
             pid_str = f"{proc.pid:>7}"
             user_str = f"{proc.user[:10]:<10}"
             cpu_str = f"{proc.cpu_percent:>5.1f}"
             mem_str = f"{proc.memory_percent:>5.1f}"
             time_str = f"{proc.time:>10}"
-            cmd_str = proc.command[:30]  # Truncate command for display
 
-            line = f"{pid_str} {user_str} {cpu_str} {mem_str} {time_str} {cmd_str}"
+            line = f"{pid_str} {user_str} {cpu_str} {mem_str} {time_str} {proc.command}"
             label = Label(line)
 
             # Color code high CPU/memory usage

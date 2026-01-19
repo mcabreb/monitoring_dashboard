@@ -81,13 +81,17 @@ async def test_panels_have_borders():
 
 @pytest.mark.asyncio
 async def test_placeholder_content():
-    """Verify panels contain placeholder text."""
+    """Verify panels contain content after data refresh."""
     app = MonitorDashboardApp()
     async with app.run_test() as pilot:
-        # Wait for screen to be ready
+        # Wait for screen and data refresh (labels are populated dynamically)
+        await pilot.pause()
+        # Trigger manual refresh and wait for it to complete
+        app._refresh_system_health()
+        app._refresh_slow_data()
         await pilot.pause()
 
-        # Check that panels have Label widgets
+        # Check that panels have Label widgets after refresh
         system_health = app.screen.query_one(SystemHealthPanel)
         labels = system_health.query(Label)
         assert len(labels) > 0

@@ -29,7 +29,7 @@ BasePanel {
 }
 
 BasePanel:focus {
-    border: double green;
+    border: double cyan;
 }
 
 /* Individual panel positioning */
@@ -56,7 +56,7 @@ BasePanel:focus {
 /* Info bar - full width at bottom */
 #info-bar {
     dock: bottom;
-    height: 4;
+    height: 5;
     width: 100%;
     border: solid white;
     background: black;
@@ -77,14 +77,28 @@ Label {
     content-align: left middle;
 }
 
-/* Logs panel - left aligned */
-#logs Label {
+/* System Health panel - left aligned */
+#system-health Label {
     content-align: left middle;
 }
 
-/* Processes panel - left aligned */
+/* Devices panel - left aligned */
+#devices Label {
+    content-align: left middle;
+}
+
+/* Logs panel - left aligned, single line with clipping */
+#logs Label {
+    content-align: left middle;
+    height: 1;
+    overflow: hidden;
+}
+
+/* Processes panel - left aligned, single line with clipping */
 #processes Label {
     content-align: left middle;
+    height: 1;
+    overflow: hidden;
 }
 
 /* Color definitions for status indicators */
@@ -124,18 +138,8 @@ Label {
     background: black;
 }
 
-/* Storage panel disk colors */
-.disk-ok {
-    color: green;
-}
-
-.disk-warning {
-    color: yellow;
-}
-
-.disk-critical {
-    color: red;
-}
+/* Note: Colors for system health, battery, and disk are applied
+   via Rich markup inline, not CSS classes */
 
 /* Log severity colors */
 .log-error {

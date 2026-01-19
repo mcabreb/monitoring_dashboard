@@ -1,51 +1,28 @@
 """System Health panel for CPU, memory, and load metrics."""
 
 from textual.app import ComposeResult
-from textual.containers import Container, Vertical
-from textual.widgets import Label, ProgressBar, Static
+from textual.containers import VerticalScroll
+from textual.widgets import Label
 
 from monitor_dashboard.models.metrics import SystemMetrics
 from monitor_dashboard.panels.base import BasePanel
 from monitor_dashboard.utils.formatting import format_bytes, format_percent
-from monitor_dashboard.widgets.sparkline import Sparkline
 
 
 class SystemHealthPanel(BasePanel):
-    """Panel displaying system health metrics."""
+    """Panel displaying system health metrics as text."""
 
     BORDER_TITLE = "● System Health"
 
     def __init__(self, **kwargs) -> None:
         """Initialize system health panel."""
         super().__init__(**kwargs)
-        self._cpu_label: Label | None = None
-        self._cpu_bar: ProgressBar | None = None
-        self._cpu_sparkline: Sparkline | None = None
-        self._memory_label: Label | None = None
-        self._memory_bar: ProgressBar | None = None
-        self._memory_details: Label | None = None
-        self._memory_sparkline: Sparkline | None = None
-        self._load_label: Label | None = None
+        self._container: VerticalScroll | None = None
 
     def compose(self) -> ComposeResult:
         """Compose the System Health panel content."""
-        with Vertical():
-            self._cpu_label = Label("CPU: N/A", id="cpu-label")
-            yield self._cpu_label
-            self._cpu_bar = ProgressBar(total=100, show_eta=False, id="cpu-bar")
-            yield self._cpu_bar
-            self._cpu_sparkline = Sparkline(id="cpu-sparkline")
-            yield self._cpu_sparkline
-            self._memory_label = Label("Memory: N/A", id="memory-label")
-            yield self._memory_label
-            self._memory_bar = ProgressBar(total=100, show_eta=False, id="memory-bar")
-            yield self._memory_bar
-            self._memory_details = Label("", id="memory-details")
-            yield self._memory_details
-            self._memory_sparkline = Sparkline(id="memory-sparkline")
-            yield self._memory_sparkline
-            self._load_label = Label("Load: N/A", id="load-label")
-            yield self._load_label
+        self._container = VerticalScroll()
+        yield self._container
 
     def update(
         self,
@@ -57,52 +34,89 @@ class SystemHealthPanel(BasePanel):
 
         Args:
             metrics: Current system metrics, or None if unavailable.
-            cpu_history: List of CPU percentage values for sparkline.
+            cpu_history: Unused, kept for API compatibility.
+            memory_history: Unused, kept for API compatibility.
         """
-        if metrics is None:
-            self._show_unavailable()
+        if not self._container:
             return
 
-        # Update CPU display
-        if self._cpu_label:
-            self._cpu_label.update(f"CPU: {format_percent(metrics.cpu_percent)}")
-        if self._cpu_bar:
-            self._cpu_bar.update(progress=metrics.cpu_percent)
+        self._container.remove_children()
 
-        # Update CPU sparkline
-        if self._cpu_sparkline and cpu_history:
-            self._cpu_sparkline.update_values(cpu_history)
+        if metrics is None:
+            self._container.mount(Label("System metrics unavailable"))
+            return
 
-        # Update memory display
-        if self._memory_label:
-            self._memory_label.update(f"Memory: {format_percent(metrics.memory_percent)}")
-        if self._memory_bar:
-            self._memory_bar.update(progress=metrics.memory_percent)
-        if self._memory_details:
-            used = format_bytes(metrics.memory_used)
-            total = format_bytes(metrics.memory_total)
-            self._memory_details.update(f"{used} / {total}")
+        # CPU overall - white label, colored value
+        cpu_color = self._get_percent_color(metrics.cpu_percent)
+        cpu_value = f"[{cpu_color}]{format_percent(metrics.cpu_percent)}[/{cpu_color}]"
+        self._container.mount(Label(f"CPU: {cpu_value}"))
 
-        # Update memory sparkline
-        if self._memory_sparkline and memory_history:
-            self._memory_sparkline.update_values(memory_history)
+        # CPU per core - display in rows of 4
+        cores = metrics.cpu_per_core
+        cores_per_row = 4
+        for i in range(0, len(cores), cores_per_row):
+            row_cores = cores[i : i + cores_per_row]
+            core_strs = []
+            for j, c in enumerate(row_cores):
+                color = self._get_percent_color(c)
+                core_strs.append(f"#{i + j}: [{color}]{format_percent(c)}[/{color}]")
+            self._container.mount(Label("  " + "  ".join(core_strs)))
 
-        # Update load average
-        if self._load_label:
-            load_1, load_5, load_15 = metrics.load_avg
-            self._load_label.update(f"Load: {load_1:.1f} (1m)  {load_5:.1f} (5m)  {load_15:.1f} (15m)")
+        # Blank line
+        self._container.mount(Label(""))
 
-    def _show_unavailable(self) -> None:
-        """Show N/A for all metrics when data is unavailable."""
-        if self._cpu_label:
-            self._cpu_label.update("CPU: N/A")
-        if self._cpu_bar:
-            self._cpu_bar.update(progress=0)
-        if self._memory_label:
-            self._memory_label.update("Memory: N/A")
-        if self._memory_bar:
-            self._memory_bar.update(progress=0)
-        if self._memory_details:
-            self._memory_details.update("")
-        if self._load_label:
-            self._load_label.update("Load: N/A")
+        # Memory - white label, colored value
+        used = format_bytes(metrics.memory_used)
+        total = format_bytes(metrics.memory_total)
+        mem_color = self._get_percent_color(metrics.memory_percent)
+        mem_value = f"[{mem_color}]{format_percent(metrics.memory_percent)}[/{mem_color}]"
+        self._container.mount(Label(f"Memory: {mem_value} ({used} / {total})"))
+
+        # Blank line
+        self._container.mount(Label(""))
+
+        # Load average - white label, colored value
+        num_cores = len(cores)
+        load_1, load_5, load_15 = metrics.load_avg
+        load_color = self._get_load_color(load_1, num_cores)
+        load_value = f"[{load_color}]{load_1:.2f}[/{load_color}] (1m)  {load_5:.2f} (5m)  {load_15:.2f} (15m)"
+        self._container.mount(Label(f"Load: {load_value}"))
+
+    def _get_percent_color(self, percent: float) -> str:
+        """Get color name for percentage value.
+
+        Args:
+            percent: Percentage value (0-100).
+
+        Returns:
+            Color name for Rich markup.
+        """
+        if percent >= 50:
+            return "red"
+        elif percent >= 20:
+            return "yellow"
+        else:
+            return "green"
+
+    def _get_load_color(self, load: float, num_cores: int) -> str:
+        """Get color name for load average value.
+
+        Args:
+            load: Load average value.
+            num_cores: Number of CPU cores.
+
+        Returns:
+            Color name for Rich markup.
+
+        Thresholds:
+            - Green: load < 70% of cores
+            - Yellow: load 70-100% of cores
+            - Red: load > 100% of cores
+        """
+        load_ratio = load / num_cores if num_cores > 0 else 0
+        if load_ratio > 1.0:
+            return "red"
+        elif load_ratio >= 0.7:
+            return "yellow"
+        else:
+            return "green"

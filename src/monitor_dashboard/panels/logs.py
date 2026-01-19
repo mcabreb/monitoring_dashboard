@@ -39,10 +39,10 @@ class LogsPanel(BasePanel):
             self._container.mount(Label("No logs available"))
             return
 
-        # Display logs (most recent first)
+        # Display logs (most recent first) - no truncation, let view handle clipping
         for log in reversed(logs[-30:]):  # Show last 30
             color_class = self._get_severity_class(log.severity)
-            label = Label(f"{log.timestamp.strftime('%H:%M:%S')} {log.message[:60]}")
+            label = Label(f"{log.timestamp.strftime('%H:%M:%S')} {log.message}")
             label.add_class(color_class)
             self._container.mount(label)
 

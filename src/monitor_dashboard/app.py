@@ -6,6 +6,7 @@ from textual.app import App
 from textual.binding import Binding
 
 from monitor_dashboard.data_sources import (
+    AptCollector,
     BatteryCollector,
     BluetoothCollector,
     LogsCollector,
@@ -54,6 +55,7 @@ class MonitorDashboardApp(App):
         self._bluetooth_collector = BluetoothCollector()
         self._logs_collector = LogsCollector()
         self._system_info_collector = SystemInfoCollector()
+        self._apt_collector = AptCollector()
         self._cpu_history = HistoryBuffer(maxlen=60)
         self._memory_history = HistoryBuffer(maxlen=60)
 
@@ -65,8 +67,11 @@ class MonitorDashboardApp(App):
         self.set_interval(1.0, self._refresh_system_health)
         # Slow refresh (10s): Storage, battery, Bluetooth, logs, system info
         self.set_interval(10.0, self._refresh_slow_data)
-        # Initial slow data refresh
+        # Very slow refresh (60 min): Apt upgrade check
+        self.set_interval(3600.0, self._refresh_apt_status)
+        # Initial data refresh
         self.call_later(self._refresh_slow_data)
+        self.call_later(self._refresh_apt_status)
 
     def _refresh_system_health(self) -> None:
         """Refresh system health data at 1 Hz."""
@@ -136,6 +141,21 @@ class MonitorDashboardApp(App):
             try:
                 panel = self.screen.query_one("#info-bar", InfoBar)
                 panel.update(system_info)
+            except Exception:
+                pass
+
+        except Exception:
+            pass
+
+    def _refresh_apt_status(self) -> None:
+        """Refresh apt upgrade status every 60 minutes."""
+        try:
+            apt_status = self._apt_collector.collect()
+
+            # Update info bar with apt status
+            try:
+                panel = self.screen.query_one("#info-bar", InfoBar)
+                panel.update_apt(apt_status)
             except Exception:
                 pass
 

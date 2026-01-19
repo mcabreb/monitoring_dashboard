@@ -1,5 +1,6 @@
 """Data source collectors for system metrics."""
 
+from monitor_dashboard.data_sources.apt import AptCollector
 from monitor_dashboard.data_sources.battery import BatteryCollector
 from monitor_dashboard.data_sources.bluetooth import BluetoothCollector
 from monitor_dashboard.data_sources.logs import LogsCollector
@@ -9,6 +10,7 @@ from monitor_dashboard.data_sources.system_health import SystemHealthCollector
 from monitor_dashboard.data_sources.system_info import SystemInfoCollector
 
 __all__ = [
+    "AptCollector",
     "BatteryCollector",
     "BluetoothCollector",
     "LogsCollector",
