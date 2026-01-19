@@ -104,7 +104,7 @@ Label {
 HistoryGraph {
     width: 30;
     height: 3;
-    background: white;
+    background: #d0d0d0;
 }
 
 /* Devices panel - left aligned */

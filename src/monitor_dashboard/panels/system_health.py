@@ -124,10 +124,10 @@ class HistoryGraph(Static):
                         block_idx = min(block_idx, 8)
                         char = GRAPH_BLOCKS[block_idx]
                     # Each character gets its own color based on the data value
-                    line_parts.append(f"[{color} on white]{char}[/]")
+                    line_parts.append(f"[{color} on #d0d0d0]{char}[/]")
                 else:
                     # No data yet for this column - empty with grey background
-                    line_parts.append("[on white] [/]")
+                    line_parts.append("[on #d0d0d0] [/]")
 
             lines.append("".join(line_parts))
 
