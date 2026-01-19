@@ -58,6 +58,7 @@ class MonitorDashboardApp(App):
         self._apt_collector = AptCollector()
         self._cpu_history = HistoryBuffer(maxlen=60)
         self._memory_history = HistoryBuffer(maxlen=60)
+        self._load_history = HistoryBuffer(maxlen=60)
 
         # Store focused panel ID for restoration after expansion
         self._stored_focus_id: str | None = None
@@ -81,6 +82,8 @@ class MonitorDashboardApp(App):
             if metrics:
                 self._cpu_history.append(metrics.cpu_percent)
                 self._memory_history.append(metrics.memory_percent)
+                # Track 1-minute load average
+                self._load_history.append(metrics.load_avg[0])
 
             # Update system health panel
             try:
@@ -89,6 +92,7 @@ class MonitorDashboardApp(App):
                     metrics,
                     self._cpu_history.get_values(),
                     self._memory_history.get_values(),
+                    self._load_history.get_values(),
                 )
             except Exception:
                 pass

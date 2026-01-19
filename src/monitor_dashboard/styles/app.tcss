@@ -82,6 +82,31 @@ Label {
     content-align: left middle;
 }
 
+/* System Health panel layout with graphs */
+#system-health .stats-row {
+    width: 100%;
+    height: auto;
+    align: left top;
+}
+
+#system-health .stats-col {
+    width: 1fr;
+    height: auto;
+}
+
+/* History Graph styling */
+#system-health .graph {
+    width: 30;
+    height: 3;
+    margin-left: 1;
+}
+
+HistoryGraph {
+    width: 30;
+    height: 3;
+    background: white;
+}
+
 /* Devices panel - left aligned */
 #devices Label {
     content-align: left middle;
