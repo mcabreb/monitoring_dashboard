@@ -7,6 +7,60 @@ from textual.containers import Container, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Label, Static
 
+from monitor_dashboard.utils.formatting import format_bytes
+
+
+def _format_info_value(key: str, value: Any) -> str:
+    """Format a value for display in the info popup.
+
+    Args:
+        key: The key/field name (used to determine formatting).
+        value: The value to format.
+
+    Returns:
+        Formatted string representation.
+    """
+    if value is None:
+        return "N/A"
+
+    key_lower = key.lower()
+
+    # Percent values - format with 2 decimals and %
+    if "percent" in key_lower:
+        if isinstance(value, (int, float)):
+            return f"{value:.2f}%"
+
+    # Byte values - format as human readable
+    if key_lower in ("total", "used", "free", "memory_used", "memory_total"):
+        if isinstance(value, (int, float)):
+            return format_bytes(int(value))
+
+    # Time remaining (seconds) - format as hours/minutes
+    if key_lower == "time_remaining":
+        if isinstance(value, (int, float)) and value > 0:
+            hours = int(value) // 3600
+            minutes = (int(value) % 3600) // 60
+            if hours > 0:
+                return f"{hours}h {minutes}m"
+            return f"{minutes}m"
+        return "N/A"
+
+    # Load values - format with 2 decimals
+    if key_lower.startswith("load_"):
+        if isinstance(value, (int, float)):
+            return f"{value:.2f}"
+
+    # Core count
+    if key_lower == "num_cores":
+        if isinstance(value, int):
+            return f"{value} cores"
+
+    # Boolean values
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+
+    return str(value)
+
 
 class InfoPopup(ModalScreen):
     """Modal popup displaying information about selected elements."""
@@ -87,7 +141,8 @@ class InfoPopup(ModalScreen):
                     details = item.get("details", {})
                     if isinstance(details, dict):
                         for key, value in details.items():
-                            yield Label(f"  {key}: {value}")
+                            formatted_value = _format_info_value(key, value)
+                            yield Label(f"  {key}: {formatted_value}")
                     else:
                         yield Label(f"  {details}")
 

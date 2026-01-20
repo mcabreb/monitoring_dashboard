@@ -47,6 +47,12 @@ class DevicesPanel(BasePanel, SelectableMixin):
         self._container = VerticalScroll()
         yield self._container
 
+    def on_mount(self) -> None:
+        """Handle mount event - display any stored data."""
+        if self._battery is not None or self._bluetooth_devices is not None or self._disks is not None:
+            self._build_device_items()
+            self._display()
+
     def get_selectable_ids(self) -> list[str]:
         """Return list of selectable element IDs."""
         return [item.id for item in self._device_items]
@@ -143,7 +149,7 @@ class DevicesPanel(BasePanel, SelectableMixin):
                         "name": dev.name,
                         "address": dev.address,
                         "battery_percent": dev.battery_percent,
-                        "connected": dev.connected,
+                        "connected": dev.is_connected,
                     },
                 ))
 
@@ -165,7 +171,7 @@ class DevicesPanel(BasePanel, SelectableMixin):
                     details={
                         "mount_point": disk.mount_point,
                         "device": disk.device,
-                        "fstype": disk.fstype,
+                        "fstype": disk.fs_type,
                         "total": disk.total,
                         "used": disk.used,
                         "free": disk.free,
