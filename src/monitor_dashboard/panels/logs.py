@@ -1,5 +1,7 @@
 """Logs panel for system log display."""
 
+from collections import deque
+
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Label
@@ -12,11 +14,14 @@ class LogsPanel(BasePanel):
     """Panel displaying system logs."""
 
     BORDER_TITLE = "● Logs"
+    MAX_LOGS = 100
 
     def __init__(self, **kwargs) -> None:
         """Initialize logs panel."""
         super().__init__(**kwargs)
         self._container: VerticalScroll | None = None
+        self._logs: deque[LogEntry] = deque(maxlen=self.MAX_LOGS)
+        self._seen_raws: set[str] = set()
 
     def compose(self) -> ComposeResult:
         """Compose the Logs panel content."""
@@ -26,21 +31,33 @@ class LogsPanel(BasePanel):
     def update(self, logs: list[LogEntry] | None) -> None:
         """Update panel with log entries.
 
+        Merges new logs with existing buffer, keeping last 100 unique entries.
+
         Args:
             logs: List of log entries, or None if unavailable.
         """
         if not self._container:
             return
 
+        if logs:
+            # Add new unique logs to buffer
+            for log in logs:
+                if log.raw not in self._seen_raws:
+                    self._logs.append(log)
+                    self._seen_raws.add(log.raw)
+                    # Keep seen set bounded
+                    if len(self._seen_raws) > self.MAX_LOGS * 2:
+                        self._seen_raws = {entry.raw for entry in self._logs}
+
         # Clear existing content
         self._container.remove_children()
 
-        if not logs:
+        if not self._logs:
             self._container.mount(Label("No logs available"))
             return
 
-        # Display logs (most recent first) - no truncation, let view handle clipping
-        for log in reversed(logs[-30:]):  # Show last 30
+        # Display all logs (most recent first)
+        for log in reversed(self._logs):
             color_class = self._get_severity_class(log.severity)
             label = Label(f"{log.timestamp.strftime('%H:%M:%S')} {log.message}")
             label.add_class(color_class)

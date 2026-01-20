@@ -168,9 +168,10 @@ class MonitorDashboardApp(App):
 
     def action_focus_next(self) -> None:
         """Move focus to next panel in cycle."""
-        # Skip tab navigation in expanded view
+        # Collapse expanded view first, then navigate
         if isinstance(self.screen, ExpandedPanelScreen):
-            return
+            self.pop_screen()
+            self.call_later(self._refresh_all)
 
         # Get all focusable panels (exclude InfoBar)
         panels = [
@@ -182,23 +183,31 @@ class MonitorDashboardApp(App):
 
         # Find current focused panel and move to next
         try:
-            current = self.focused
-            if current in panels:
-                current_idx = panels.index(current)
+            current_id = self._stored_focus_id
+            current_idx = next(
+                (i for i, p in enumerate(panels) if p.id == current_id), -1
+            )
+            if current_idx >= 0:
                 next_idx = (current_idx + 1) % len(panels)
-                panels[next_idx].focus()
             else:
-                # If no panel focused, focus first one
-                panels[0].focus()
+                current = self.focused
+                if current in panels:
+                    current_idx = panels.index(current)
+                    next_idx = (current_idx + 1) % len(panels)
+                else:
+                    next_idx = 0
+            self._stored_focus_id = panels[next_idx].id
+            panels[next_idx].focus()
         except Exception:
             # Fallback: focus first panel
             panels[0].focus()
 
     def action_focus_previous(self) -> None:
         """Move focus to previous panel in cycle."""
-        # Skip tab navigation in expanded view
+        # Collapse expanded view first, then navigate
         if isinstance(self.screen, ExpandedPanelScreen):
-            return
+            self.pop_screen()
+            self.call_later(self._refresh_all)
 
         # Get all focusable panels (exclude InfoBar)
         panels = [
@@ -210,14 +219,21 @@ class MonitorDashboardApp(App):
 
         # Find current focused panel and move to previous
         try:
-            current = self.focused
-            if current in panels:
-                current_idx = panels.index(current)
+            current_id = self._stored_focus_id
+            current_idx = next(
+                (i for i, p in enumerate(panels) if p.id == current_id), -1
+            )
+            if current_idx >= 0:
                 prev_idx = (current_idx - 1) % len(panels)
-                panels[prev_idx].focus()
             else:
-                # If no panel focused, focus last one
-                panels[-1].focus()
+                current = self.focused
+                if current in panels:
+                    current_idx = panels.index(current)
+                    prev_idx = (current_idx - 1) % len(panels)
+                else:
+                    prev_idx = -1
+            self._stored_focus_id = panels[prev_idx].id
+            panels[prev_idx].focus()
         except Exception:
             # Fallback: focus last panel
             panels[-1].focus()

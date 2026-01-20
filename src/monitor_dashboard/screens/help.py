@@ -50,4 +50,5 @@ class HelpOverlay(ModalScreen):
 
     def on_key(self, event) -> None:
         """Dismiss on any key press."""
+        event.stop()
         self.dismiss()
