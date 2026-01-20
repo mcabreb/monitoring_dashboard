@@ -186,6 +186,9 @@ class DevicesPanel(BasePanel, SelectableMixin):
 
         self._container.remove_children()
 
+        # Track cursor widget for scrolling
+        cursor_widget = None
+
         # === BATTERY SECTION ===
         self._container.mount(Label("Battery:"))
 
@@ -198,6 +201,8 @@ class DevicesPanel(BasePanel, SelectableMixin):
         for item in battery_items:
             text = f"  {item.label}: [{item.color}]{item.value}[/{item.color}]"
             label = self._create_label(text, item.id)
+            if self.is_cursor(item.id):
+                cursor_widget = label
             self._container.mount(label)
 
         # Bluetooth devices
@@ -205,6 +210,8 @@ class DevicesPanel(BasePanel, SelectableMixin):
             for item in bluetooth_items:
                 text = f"  {item.label}: [{item.color}]{item.value}[/{item.color}]"
                 label = self._create_label(text, item.id)
+                if self.is_cursor(item.id):
+                    cursor_widget = label
                 self._container.mount(label)
         else:
             self._container.mount(Label("  No Bluetooth devices"))
@@ -219,9 +226,16 @@ class DevicesPanel(BasePanel, SelectableMixin):
             for item in disk_items:
                 text = f"  {item.label}: [{item.color}]{item.value}[/{item.color}]"
                 label = self._create_label(text, item.id)
+                if self.is_cursor(item.id):
+                    cursor_widget = label
                 self._container.mount(label)
         else:
             self._container.mount(Label("  No storage info"))
+
+        # Scroll to keep cursor visible (use default args to capture current values)
+        if cursor_widget is not None:
+            container = self._container
+            container.call_later(lambda w=cursor_widget, c=container: c.scroll_to_widget(w, animate=False))
 
     def _create_label(self, text: str, element_id: str) -> Label:
         """Create a label with selection styling.

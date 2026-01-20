@@ -354,12 +354,18 @@ class SystemHealthPanel(BasePanel, SelectableMixin):
 
         metrics = self._metrics
 
+        # Track cursor widget for scrolling
+        cursor_widget = None
+
         # CPU section - overall
         cpu_item = self.get_element_data("cpu")
         if cpu_item:
             prefix, suffix = self._get_selection_markup("cpu")
             text = f"{prefix}CPU:{suffix} [{cpu_item.color}]{cpu_item.value}[/{cpu_item.color}]"
-            self._cpu_stats.mount(Label(text))
+            label = Label(text)
+            if self.is_cursor("cpu"):
+                cursor_widget = label
+            self._cpu_stats.mount(label)
 
         # CPU per core - display in rows of 4 (like original)
         cores = metrics.cpu_per_core
@@ -367,6 +373,7 @@ class SystemHealthPanel(BasePanel, SelectableMixin):
         for i in range(0, len(cores), cores_per_row):
             row_cores = cores[i : i + cores_per_row]
             core_strs = []
+            row_has_cursor = False
             for j, c in enumerate(row_cores):
                 core_idx = i + j
                 core_id = f"core-{core_idx}"
@@ -376,14 +383,22 @@ class SystemHealthPanel(BasePanel, SelectableMixin):
                     color = core_item.color
                     # Selection only on the identifier part, not the percentage
                     core_strs.append(f"{prefix}#{core_idx}:{suffix} [{color}]{format_percent(c)}[/{color}]")
-            self._cpu_stats.mount(Label("  " + "  ".join(core_strs)))
+                    if self.is_cursor(core_id):
+                        row_has_cursor = True
+            label = Label("  " + "  ".join(core_strs))
+            if row_has_cursor:
+                cursor_widget = label
+            self._cpu_stats.mount(label)
 
         # Memory section
         mem_item = self.get_element_data("memory")
         if mem_item:
             prefix, suffix = self._get_selection_markup("memory")
             text = f"{prefix}Memory:{suffix} [{mem_item.color}]{mem_item.value}[/{mem_item.color}]"
-            self._mem_stats.mount(Label(text))
+            label = Label(text)
+            if self.is_cursor("memory"):
+                cursor_widget = label
+            self._mem_stats.mount(label)
 
         # Load section
         load_item = self.get_element_data("load")
@@ -400,7 +415,10 @@ class SystemHealthPanel(BasePanel, SelectableMixin):
                 f"[{load_5_color}]{load_5:.2f}[/{load_5_color}] (5m)  "
                 f"[{load_15_color}]{load_15:.2f}[/{load_15_color}] (15m)"
             )
-            self._load_stats.mount(Label(load_text))
+            label = Label(load_text)
+            if self.is_cursor("load"):
+                cursor_widget = label
+            self._load_stats.mount(label)
 
         # Update graphs
         if self._cpu_graph and self._cpu_history:
@@ -410,6 +428,11 @@ class SystemHealthPanel(BasePanel, SelectableMixin):
         if self._load_graph and self._load_history:
             num_cores = len(metrics.cpu_per_core)
             self._load_graph.update_history(self._load_history, num_cores=num_cores)
+
+        # Scroll to keep cursor visible (use default args to capture current values)
+        if cursor_widget is not None and self._container is not None:
+            container = self._container
+            container.call_later(lambda w=cursor_widget, c=container: c.scroll_to_widget(w, animate=False))
 
     def _get_percent_color(self, percent: float) -> str:
         """Get color name for CPU percentage value."""

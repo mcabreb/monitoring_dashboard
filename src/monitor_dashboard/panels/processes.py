@@ -149,6 +149,9 @@ class ProcessesPanel(BasePanel, SelectableMixin):
         header_label.add_class("process-header")
         self._container.mount(header_label)
 
+        # Track cursor widget for scrolling
+        cursor_widget = None
+
         # Process rows
         for proc in self._sorted_processes:
             element_id = str(proc.pid)
@@ -167,6 +170,8 @@ class ProcessesPanel(BasePanel, SelectableMixin):
             selection_class = self.get_selection_class(element_id)
             if selection_class:
                 label.add_class(selection_class)
+                if self.is_cursor(element_id):
+                    cursor_widget = label
             else:
                 # Color code high CPU/memory usage only if not selected
                 if proc.cpu_percent >= 50 or proc.memory_percent >= 50:
@@ -175,6 +180,11 @@ class ProcessesPanel(BasePanel, SelectableMixin):
                     label.add_class("process-medium")
 
             self._container.mount(label)
+
+        # Scroll to keep cursor visible (use default args to capture current values)
+        if cursor_widget is not None:
+            container = self._container
+            container.call_later(lambda w=cursor_widget, c=container: c.scroll_to_widget(w, animate=False))
 
     def cycle_sort(self) -> None:
         """Cycle to the next sort column and re-render."""

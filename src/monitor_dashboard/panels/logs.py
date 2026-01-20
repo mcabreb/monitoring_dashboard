@@ -93,6 +93,9 @@ class LogsPanel(BasePanel, SelectableMixin):
             self._container.mount(Label("No logs available"))
             return
 
+        # Track cursor widget for scrolling
+        cursor_widget = None
+
         # Display all logs (most recent first)
         for log in self._display_logs:
             element_id = log.raw
@@ -103,12 +106,19 @@ class LogsPanel(BasePanel, SelectableMixin):
             selection_class = self.get_selection_class(element_id)
             if selection_class:
                 label.add_class(selection_class)
+                if self.is_cursor(element_id):
+                    cursor_widget = label
             else:
                 # Apply severity color if not selected
                 color_class = self._get_severity_class(log.severity)
                 label.add_class(color_class)
 
             self._container.mount(label)
+
+        # Scroll to keep cursor visible (use default args to capture current values)
+        if cursor_widget is not None:
+            container = self._container
+            container.call_later(lambda w=cursor_widget, c=container: c.scroll_to_widget(w, animate=False))
 
     def _get_severity_class(self, severity: LogSeverity) -> str:
         """Get CSS class for log severity.
