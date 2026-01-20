@@ -1,5 +1,8 @@
 """Main application module for Monitor Dashboard."""
 
+import os
+import signal
+from datetime import datetime
 from pathlib import Path
 
 from textual.app import App
@@ -19,8 +22,17 @@ from monitor_dashboard.panels.devices import DevicesPanel
 from monitor_dashboard.panels.info_bar import InfoBar
 from monitor_dashboard.panels.logs import LogsPanel
 from monitor_dashboard.panels.processes import ProcessesPanel
+from monitor_dashboard.panels.selectable import SelectableMixin, SelectionState
 from monitor_dashboard.panels.system_health import SystemHealthPanel
-from monitor_dashboard.screens import ExpandedPanelScreen, HelpOverlay, MainDashboard
+from monitor_dashboard.screens import (
+    ExpandedPanelScreen,
+    ErrorPopup,
+    ExportSuccessPopup,
+    HelpOverlay,
+    InfoPopup,
+    KillConfirmPopup,
+    MainDashboard,
+)
 from monitor_dashboard.utils import HistoryBuffer
 
 
@@ -34,11 +46,16 @@ class MonitorDashboardApp(App):
         Binding("shift+tab", "focus_previous", "Previous Panel"),
         Binding("enter", "toggle_expand", "Expand/Collapse"),
         Binding("escape", "collapse", "Return", show=False),
-        Binding("up", "scroll_up", "Scroll Up", show=False),
-        Binding("down", "scroll_down", "Scroll Down", show=False),
-        Binding("left", "scroll_left", "Scroll Left", show=False),
-        Binding("right", "scroll_right", "Scroll Right", show=False),
+        Binding("up", "select_previous", "Select Previous", show=False),
+        Binding("down", "select_next", "Select Next", show=False),
+        Binding("home", "select_first", "Select First", show=False),
+        Binding("end", "select_last", "Select Last", show=False),
+        Binding("space", "toggle_sticky", "Toggle Sticky", show=False),
+        Binding("c", "clear_sticky", "Clear Sticky", show=False),
         Binding("p", "cycle_process_sort", "Sort Processes"),
+        Binding("i", "show_info", "Show Info", show=False),
+        Binding("l", "export_logs", "Export Logs", show=False),
+        Binding("k", "kill_process", "Kill Process", show=False),
         Binding("question_mark", "show_help", "Help"),
         Binding("q", "quit", "Quit"),
     ]
@@ -63,6 +80,12 @@ class MonitorDashboardApp(App):
         # Store focused panel ID for restoration after expansion
         self._stored_focus_id: str | None = None
 
+        # Store selection states per panel for persistence across expand/collapse
+        self._selection_states: dict[str, SelectionState] = {}
+
+        # Track previous focused panel to clear selections on change
+        self._previous_focused_panel_id: str | None = None
+
         # Start refresh timers
         # Fast refresh (1s): System health (CPU, memory, load)
         self.set_interval(1.0, self._refresh_system_health)
@@ -73,6 +96,80 @@ class MonitorDashboardApp(App):
         # Initial data refresh
         self.call_later(self._refresh_slow_data)
         self.call_later(self._refresh_apt_status)
+
+    def _get_focused_panel(self) -> SelectableMixin | None:
+        """Get the currently focused panel if it supports selection.
+
+        Returns:
+            The focused panel with SelectableMixin, or None.
+        """
+        focused = self.focused
+        if focused and isinstance(focused, SelectableMixin):
+            return focused
+        return None
+
+    def _get_panel_by_id(self, panel_id: str) -> SelectableMixin | None:
+        """Get a panel by its ID.
+
+        Args:
+            panel_id: The panel's ID.
+
+        Returns:
+            The panel with SelectableMixin, or None.
+        """
+        try:
+            panel = self.screen.query_one(f"#{panel_id}")
+            if isinstance(panel, SelectableMixin):
+                return panel
+        except Exception:
+            pass
+        return None
+
+    def _clear_panel_selections(self, panel_id: str) -> None:
+        """Clear all selections in a panel.
+
+        Args:
+            panel_id: The panel's ID.
+        """
+        panel = self._get_panel_by_id(panel_id)
+        if panel:
+            panel.clear_selections()
+        # Also clear stored state
+        if panel_id in self._selection_states:
+            del self._selection_states[panel_id]
+
+    def _save_panel_selection_state(self, panel_id: str) -> None:
+        """Save a panel's selection state.
+
+        Args:
+            panel_id: The panel's ID.
+        """
+        panel = self._get_panel_by_id(panel_id)
+        if panel:
+            self._selection_states[panel_id] = panel.get_selection_state()
+
+    def _restore_panel_selection_state(self, panel_id: str) -> None:
+        """Restore a panel's selection state.
+
+        Args:
+            panel_id: The panel's ID.
+        """
+        if panel_id in self._selection_states:
+            panel = self._get_panel_by_id(panel_id)
+            if panel:
+                panel.set_selection_state(self._selection_states[panel_id])
+
+    def _on_panel_focus_changed(self, new_panel_id: str | None) -> None:
+        """Handle focus changing to a new panel.
+
+        Clears selections in the previously focused panel.
+
+        Args:
+            new_panel_id: ID of newly focused panel, or None.
+        """
+        if self._previous_focused_panel_id and self._previous_focused_panel_id != new_panel_id:
+            self._clear_panel_selections(self._previous_focused_panel_id)
+        self._previous_focused_panel_id = new_panel_id
 
     def _refresh_system_health(self) -> None:
         """Refresh system health data at 1 Hz."""
@@ -170,6 +267,7 @@ class MonitorDashboardApp(App):
         """Move focus to next panel in cycle."""
         # Collapse expanded view first, then navigate
         if isinstance(self.screen, ExpandedPanelScreen):
+            self._save_panel_selection_state(self.screen.panel_id)
             self.pop_screen()
             self.call_later(self._refresh_all)
 
@@ -197,6 +295,7 @@ class MonitorDashboardApp(App):
                 else:
                     next_idx = 0
             self._stored_focus_id = panels[next_idx].id
+            self._on_panel_focus_changed(panels[next_idx].id)
             panels[next_idx].focus()
         except Exception:
             # Fallback: focus first panel
@@ -206,6 +305,7 @@ class MonitorDashboardApp(App):
         """Move focus to previous panel in cycle."""
         # Collapse expanded view first, then navigate
         if isinstance(self.screen, ExpandedPanelScreen):
+            self._save_panel_selection_state(self.screen.panel_id)
             self.pop_screen()
             self.call_later(self._refresh_all)
 
@@ -233,26 +333,47 @@ class MonitorDashboardApp(App):
                 else:
                     prev_idx = -1
             self._stored_focus_id = panels[prev_idx].id
+            self._on_panel_focus_changed(panels[prev_idx].id)
             panels[prev_idx].focus()
         except Exception:
             # Fallback: focus last panel
             panels[-1].focus()
 
-    def action_scroll_up(self) -> None:
-        """Scroll up within focused panel (stub for future implementation)."""
-        pass
+    def action_select_next(self) -> None:
+        """Select next element in focused panel."""
+        panel = self._get_focused_panel()
+        if panel:
+            panel.select_next()
 
-    def action_scroll_down(self) -> None:
-        """Scroll down within focused panel (stub for future implementation)."""
-        pass
+    def action_select_previous(self) -> None:
+        """Select previous element in focused panel."""
+        panel = self._get_focused_panel()
+        if panel:
+            panel.select_previous()
 
-    def action_scroll_left(self) -> None:
-        """Scroll left within focused panel (stub for future implementation)."""
-        pass
+    def action_toggle_sticky(self) -> None:
+        """Toggle sticky selection on current element."""
+        panel = self._get_focused_panel()
+        if panel:
+            panel.toggle_sticky()
 
-    def action_scroll_right(self) -> None:
-        """Scroll right within focused panel (stub for future implementation)."""
-        pass
+    def action_clear_sticky(self) -> None:
+        """Clear all sticky selections in focused panel."""
+        panel = self._get_focused_panel()
+        if panel:
+            panel.clear_sticky_selections()
+
+    def action_select_first(self) -> None:
+        """Select first element in focused panel."""
+        panel = self._get_focused_panel()
+        if panel:
+            panel.select_first()
+
+    def action_select_last(self) -> None:
+        """Select last element in focused panel."""
+        panel = self._get_focused_panel()
+        if panel:
+            panel.select_last()
 
     def action_show_help(self) -> None:
         """Show the help overlay with keyboard shortcuts."""
@@ -266,6 +387,153 @@ class MonitorDashboardApp(App):
         except Exception:
             pass
 
+    def action_show_info(self) -> None:
+        """Show info popup for selected elements in focused panel."""
+        panel = self._get_focused_panel()
+        if not panel:
+            return
+
+        # Get selected elements (sticky if any, otherwise cursor)
+        sticky_ids = panel.get_sticky_ids()
+        cursor_id = panel.get_cursor_id()
+
+        if sticky_ids:
+            element_ids = list(sticky_ids)
+        elif cursor_id:
+            element_ids = [cursor_id]
+        else:
+            self.push_screen(ErrorPopup("No Selection", "No element selected"))
+            return
+
+        # Build info items
+        items = []
+        for element_id in element_ids:
+            data = panel.get_element_data(element_id)
+            if data:
+                # Format based on data type
+                if hasattr(data, "details") and data.details:
+                    items.append({"label": getattr(data, "label", element_id), "details": data.details})
+                elif hasattr(data, "__dict__"):
+                    items.append({"label": element_id, "details": data.__dict__})
+                else:
+                    items.append({"label": element_id, "details": str(data)})
+
+        if items:
+            # Determine title based on panel type
+            focused = self.focused
+            if hasattr(focused, "id"):
+                title = f"Info: {focused.id.replace('-', ' ').title()}"
+            else:
+                title = "Info"
+            self.push_screen(InfoPopup(title, items))
+
+    def action_export_logs(self) -> None:
+        """Export logs to ~/Downloads."""
+        # Only works in logs panel
+        focused = self.focused
+        if not hasattr(focused, "id") or focused.id != "logs":
+            return
+
+        try:
+            panel = self.screen.query_one("#logs", LogsPanel)
+        except Exception:
+            return
+
+        # Get logs to export
+        sticky_ids = panel.get_sticky_ids()
+        if sticky_ids:
+            # Export only sticky-selected logs
+            logs_to_export = []
+            for log_id in sticky_ids:
+                log = panel.get_element_data(log_id)
+                if log:
+                    logs_to_export.append(log)
+        else:
+            # Export all logs
+            logs_to_export = panel.get_all_logs()
+
+        if not logs_to_export:
+            self.push_screen(ErrorPopup("No Logs", "No logs to export"))
+            return
+
+        # Create Downloads folder if needed
+        downloads_dir = Path.home() / "Downloads"
+        downloads_dir.mkdir(exist_ok=True)
+
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        filename = f"logs_{timestamp}.txt"
+        filepath = downloads_dir / filename
+
+        # Write logs
+        try:
+            with open(filepath, "w") as f:
+                for log in logs_to_export:
+                    f.write(f"{log.timestamp.strftime('%Y-%m-%d %H:%M:%S')} {log.message}\n")
+            self.push_screen(ExportSuccessPopup(str(filepath), len(logs_to_export)))
+        except Exception as e:
+            self.push_screen(ErrorPopup("Export Failed", str(e)))
+
+    def action_kill_process(self) -> None:
+        """Kill selected process (with confirmation)."""
+        # Only works in processes panel
+        focused = self.focused
+        if not hasattr(focused, "id") or focused.id != "processes":
+            return
+
+        try:
+            panel = self.screen.query_one("#processes", ProcessesPanel)
+        except Exception:
+            return
+
+        # Check for sticky selections (not allowed for kill)
+        sticky_ids = panel.get_sticky_ids()
+        if sticky_ids:
+            self.push_screen(
+                ErrorPopup(
+                    "Cannot Kill Multiple",
+                    "Kill only works on cursor selection, not sticky selections.\n"
+                    "Use SPACE to remove sticky selections first.",
+                )
+            )
+            return
+
+        # Get cursor selection
+        cursor_id = panel.get_cursor_id()
+        if not cursor_id:
+            self.push_screen(ErrorPopup("No Selection", "No process selected"))
+            return
+
+        process = panel.get_element_data(cursor_id)
+        if not process:
+            return
+
+        # Check if it's a user process (not root/system)
+        current_user = os.getenv("USER", "")
+        if process.user != current_user:
+            self.push_screen(
+                ErrorPopup(
+                    "Cannot Kill",
+                    f"Cannot kill process owned by '{process.user}'.\n"
+                    f"Only processes owned by '{current_user}' can be killed.",
+                )
+            )
+            return
+
+        # Show confirmation popup
+        def handle_kill_confirm(confirmed: bool) -> None:
+            if confirmed:
+                try:
+                    os.kill(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    self.push_screen(ErrorPopup("Process Not Found", f"Process {process.pid} no longer exists"))
+                except PermissionError:
+                    self.push_screen(ErrorPopup("Permission Denied", f"Cannot kill process {process.pid}"))
+                except Exception as e:
+                    self.push_screen(ErrorPopup("Kill Failed", str(e)))
+
+        self.push_screen(KillConfirmPopup(process.pid, process.command[:30]), handle_kill_confirm)
+
     def action_toggle_expand(self) -> None:
         """Toggle between expanded and normal view."""
         if isinstance(self.screen, ExpandedPanelScreen):
@@ -278,6 +546,8 @@ class MonitorDashboardApp(App):
                 # Only expand if it's one of the main panels
                 if panel_id in ["system-health", "processes", "devices", "logs"]:
                     self._stored_focus_id = panel_id
+                    # Clear selections before expanding (reset on zoom)
+                    self._clear_panel_selections(panel_id)
                     self.push_screen(ExpandedPanelScreen(panel_id))
                     # Trigger immediate refresh after screen transition
                     self.call_later(self._refresh_all)
@@ -285,8 +555,11 @@ class MonitorDashboardApp(App):
     def action_collapse(self) -> None:
         """Return to main dashboard from expanded view."""
         if isinstance(self.screen, ExpandedPanelScreen):
+            panel_id = self.screen.panel_id
+            # Clear selections before collapsing (reset on zoom)
+            self._clear_panel_selections(panel_id)
             self.pop_screen()
-            # Restore focus and refresh after screen transition
+            # Restore focus after screen transition
             self.call_later(self._restore_focus)
             self.call_later(self._refresh_all)
 

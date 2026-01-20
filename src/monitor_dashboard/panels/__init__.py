@@ -5,6 +5,7 @@ from monitor_dashboard.panels.devices import DevicesPanel
 from monitor_dashboard.panels.info_bar import InfoBar
 from monitor_dashboard.panels.logs import LogsPanel
 from monitor_dashboard.panels.processes import ProcessesPanel
+from monitor_dashboard.panels.selectable import SelectableMixin, SelectionState
 from monitor_dashboard.panels.system_health import SystemHealthPanel
 
 __all__ = [
@@ -13,5 +14,7 @@ __all__ = [
     "InfoBar",
     "LogsPanel",
     "ProcessesPanel",
+    "SelectableMixin",
+    "SelectionState",
     "SystemHealthPanel",
 ]

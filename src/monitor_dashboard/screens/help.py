@@ -7,11 +7,24 @@ from textual.widgets import Static
 
 HELP_TEXT = """[b]Keyboard Help[/b]
 
+[cyan]Navigation[/cyan]
 [green]Tab[/green]          Next panel
 [green]Shift+Tab[/green]    Previous panel
 [green]Enter[/green]        Expand/collapse panel
 [green]Escape[/green]       Return to dashboard
+
+[cyan]Selection[/cyan]
+[green]Up/Down[/green]      Select element
+[green]Home/End[/green]     First/last element
+[green]Space[/green]        Toggle sticky selection
+[green]c[/green]            Clear sticky selections
+[green]i[/green]            Show info for selection
+
+[cyan]Actions[/cyan]
 [green]p[/green]            Cycle process sort column
+[green]k[/green]            Kill process (Processes only)
+[green]l[/green]            Export logs (Logs only)
+
 [green]?[/green]            Show this help
 [green]q[/green]            Quit application
 

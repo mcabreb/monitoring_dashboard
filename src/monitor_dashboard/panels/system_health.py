@@ -1,16 +1,35 @@
 """System Health panel for CPU, memory, and load metrics."""
 
+from dataclasses import dataclass
+from typing import Any
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Label, Static
 
 from monitor_dashboard.models.metrics import SystemMetrics
 from monitor_dashboard.panels.base import BasePanel
+from monitor_dashboard.panels.selectable import SelectableMixin
 from monitor_dashboard.utils.formatting import format_bytes, format_percent
 
 
 # Unicode block characters for graph (8 levels from empty to full)
 GRAPH_BLOCKS = " ▁▂▃▄▅▆▇█"
+
+# Selection colors for Rich markup
+CURSOR_BG = "on cyan"
+STICKY_BG = "on dark_cyan"
+
+
+@dataclass
+class MetricItem:
+    """Data for a selectable metric item."""
+
+    id: str
+    label: str
+    value: str
+    color: str
+    details: dict[str, Any] | None = None
 
 
 class HistoryGraph(Static):
@@ -134,7 +153,7 @@ class HistoryGraph(Static):
         self.update("\n".join(lines))
 
 
-class SystemHealthPanel(BasePanel):
+class SystemHealthPanel(BasePanel, SelectableMixin):
     """Panel displaying system health metrics as text."""
 
     BORDER_TITLE = "● System Health"
@@ -142,6 +161,7 @@ class SystemHealthPanel(BasePanel):
     def __init__(self, **kwargs) -> None:
         """Initialize system health panel."""
         super().__init__(**kwargs)
+        self.init_selection()
         self._container: VerticalScroll | None = None
         self._cpu_stats: Vertical | None = None
         self._cpu_graph: HistoryGraph | None = None
@@ -149,6 +169,12 @@ class SystemHealthPanel(BasePanel):
         self._mem_graph: HistoryGraph | None = None
         self._load_stats: Vertical | None = None
         self._load_graph: HistoryGraph | None = None
+        # Store metrics for selection data access
+        self._metrics: SystemMetrics | None = None
+        self._metric_items: list[MetricItem] = []
+        self._cpu_history: list[float] = []
+        self._memory_history: list[float] = []
+        self._load_history: list[float] = []
 
     def compose(self) -> ComposeResult:
         """Compose the System Health panel content."""
@@ -189,6 +215,21 @@ class SystemHealthPanel(BasePanel):
 
         yield self._container
 
+    def get_selectable_ids(self) -> list[str]:
+        """Return list of selectable element IDs."""
+        return [item.id for item in self._metric_items]
+
+    def get_element_data(self, element_id: str) -> MetricItem | None:
+        """Get metric item data for an element ID."""
+        for item in self._metric_items:
+            if item.id == element_id:
+                return item
+        return None
+
+    def refresh_selection_display(self) -> None:
+        """Re-render with selection styling."""
+        self._display()
+
     def update(
         self,
         metrics: SystemMetrics | None,
@@ -204,6 +245,101 @@ class SystemHealthPanel(BasePanel):
             memory_history: List of historical memory percentages for graph.
             load_history: List of historical load averages (1m) for graph.
         """
+        self._metrics = metrics
+        if cpu_history:
+            self._cpu_history = cpu_history
+        if memory_history:
+            self._memory_history = memory_history
+        if load_history:
+            self._load_history = load_history
+
+        self._build_metric_items()
+        self._display()
+
+    def _build_metric_items(self) -> None:
+        """Build list of selectable metric items from current metrics."""
+        self._metric_items = []
+        if not self._metrics:
+            return
+
+        metrics = self._metrics
+
+        # CPU overall
+        cpu_color = self._get_percent_color(metrics.cpu_percent)
+        self._metric_items.append(MetricItem(
+            id="cpu",
+            label="CPU",
+            value=format_percent(metrics.cpu_percent),
+            color=cpu_color,
+            details={"type": "cpu", "percent": metrics.cpu_percent},
+        ))
+
+        # CPU per core
+        for i, core_pct in enumerate(metrics.cpu_per_core):
+            color = self._get_percent_color(core_pct)
+            self._metric_items.append(MetricItem(
+                id=f"core-{i}",
+                label=f"#{i}",
+                value=format_percent(core_pct),
+                color=color,
+                details={"type": "core", "core_num": i, "percent": core_pct},
+            ))
+
+        # Memory
+        mem_color = self._get_memory_color(metrics.memory_percent)
+        used = format_bytes(metrics.memory_used)
+        total = format_bytes(metrics.memory_total)
+        self._metric_items.append(MetricItem(
+            id="memory",
+            label="Memory",
+            value=f"{format_percent(metrics.memory_percent)} ({used} / {total})",
+            color=mem_color,
+            details={
+                "type": "memory",
+                "percent": metrics.memory_percent,
+                "used": metrics.memory_used,
+                "total": metrics.memory_total,
+            },
+        ))
+
+        # Load
+        num_cores = len(metrics.cpu_per_core)
+        load_1, load_5, load_15 = metrics.load_avg
+        load_color = self._get_load_color(load_1, num_cores)
+        self._metric_items.append(MetricItem(
+            id="load",
+            label="Load",
+            value=f"{load_1:.2f} (1m)  {load_5:.2f} (5m)  {load_15:.2f} (15m)",
+            color=load_color,
+            details={
+                "type": "load",
+                "load_1m": load_1,
+                "load_5m": load_5,
+                "load_15m": load_15,
+                "num_cores": num_cores,
+            },
+        ))
+
+        # Prune sticky selections for items that no longer exist
+        self.prune_invalid_sticky()
+
+    def _get_selection_markup(self, element_id: str) -> tuple[str, str]:
+        """Get Rich markup prefix/suffix for selection state.
+
+        Args:
+            element_id: Element to check.
+
+        Returns:
+            Tuple of (prefix, suffix) for Rich markup.
+        """
+        if self.is_cursor(element_id):
+            return f"[black {CURSOR_BG}]", "[/]"
+        elif self.is_sticky(element_id):
+            return f"[white {STICKY_BG}]", "[/]"
+        return "", ""
+
+    def _display(self) -> None:
+        """Render the panel with current data and selection styling."""
         if not self._cpu_stats or not self._mem_stats or not self._load_stats:
             return
 
@@ -212,68 +348,71 @@ class SystemHealthPanel(BasePanel):
         self._mem_stats.remove_children()
         self._load_stats.remove_children()
 
-        if metrics is None:
+        if not self._metrics:
             self._cpu_stats.mount(Label("System metrics unavailable"))
             return
 
-        # CPU section
-        cpu_color = self._get_percent_color(metrics.cpu_percent)
-        cpu_value = f"[{cpu_color}]{format_percent(metrics.cpu_percent)}[/{cpu_color}]"
-        self._cpu_stats.mount(Label(f"CPU: {cpu_value}"))
+        metrics = self._metrics
 
-        # CPU per core - display in rows of 4
+        # CPU section - overall
+        cpu_item = self.get_element_data("cpu")
+        if cpu_item:
+            prefix, suffix = self._get_selection_markup("cpu")
+            text = f"{prefix}CPU:{suffix} [{cpu_item.color}]{cpu_item.value}[/{cpu_item.color}]"
+            self._cpu_stats.mount(Label(text))
+
+        # CPU per core - display in rows of 4 (like original)
         cores = metrics.cpu_per_core
         cores_per_row = 4
         for i in range(0, len(cores), cores_per_row):
             row_cores = cores[i : i + cores_per_row]
             core_strs = []
             for j, c in enumerate(row_cores):
-                color = self._get_percent_color(c)
-                core_strs.append(f"#{i + j}: [{color}]{format_percent(c)}[/{color}]")
+                core_idx = i + j
+                core_id = f"core-{core_idx}"
+                core_item = self.get_element_data(core_id)
+                if core_item:
+                    prefix, suffix = self._get_selection_markup(core_id)
+                    color = core_item.color
+                    # Selection only on the identifier part, not the percentage
+                    core_strs.append(f"{prefix}#{core_idx}:{suffix} [{color}]{format_percent(c)}[/{color}]")
             self._cpu_stats.mount(Label("  " + "  ".join(core_strs)))
 
         # Memory section
-        used = format_bytes(metrics.memory_used)
-        total = format_bytes(metrics.memory_total)
-        mem_color = self._get_memory_color(metrics.memory_percent)
-        mem_value = f"[{mem_color}]{format_percent(metrics.memory_percent)}[/{mem_color}]"
-        self._mem_stats.mount(Label(f"Memory: {mem_value} ({used} / {total})"))
+        mem_item = self.get_element_data("memory")
+        if mem_item:
+            prefix, suffix = self._get_selection_markup("memory")
+            text = f"{prefix}Memory:{suffix} [{mem_item.color}]{mem_item.value}[/{mem_item.color}]"
+            self._mem_stats.mount(Label(text))
 
-        # Load section - color all three values
-        num_cores = len(cores)
-        load_1, load_5, load_15 = metrics.load_avg
-        load_1_color = self._get_load_color(load_1, num_cores)
-        load_5_color = self._get_load_color(load_5, num_cores)
-        load_15_color = self._get_load_color(load_15, num_cores)
-        load_value = (
-            f"[{load_1_color}]{load_1:.2f}[/{load_1_color}] (1m)  "
-            f"[{load_5_color}]{load_5:.2f}[/{load_5_color}] (5m)  "
-            f"[{load_15_color}]{load_15:.2f}[/{load_15_color}] (15m)"
-        )
-        self._load_stats.mount(Label(f"Load: {load_value}"))
+        # Load section
+        load_item = self.get_element_data("load")
+        if load_item:
+            # Color each load value individually
+            num_cores = len(cores)
+            load_1, load_5, load_15 = metrics.load_avg
+            load_1_color = self._get_load_color(load_1, num_cores)
+            load_5_color = self._get_load_color(load_5, num_cores)
+            load_15_color = self._get_load_color(load_15, num_cores)
+            prefix, suffix = self._get_selection_markup("load")
+            load_text = (
+                f"{prefix}Load:{suffix} [{load_1_color}]{load_1:.2f}[/{load_1_color}] (1m)  "
+                f"[{load_5_color}]{load_5:.2f}[/{load_5_color}] (5m)  "
+                f"[{load_15_color}]{load_15:.2f}[/{load_15_color}] (15m)"
+            )
+            self._load_stats.mount(Label(load_text))
 
         # Update graphs
-        if self._cpu_graph and cpu_history:
-            self._cpu_graph.update_history(cpu_history)
-        if self._mem_graph and memory_history:
-            self._mem_graph.update_history(memory_history)
-        if self._load_graph and load_history:
-            self._load_graph.update_history(load_history, num_cores=num_cores)
+        if self._cpu_graph and self._cpu_history:
+            self._cpu_graph.update_history(self._cpu_history)
+        if self._mem_graph and self._memory_history:
+            self._mem_graph.update_history(self._memory_history)
+        if self._load_graph and self._load_history:
+            num_cores = len(metrics.cpu_per_core)
+            self._load_graph.update_history(self._load_history, num_cores=num_cores)
 
     def _get_percent_color(self, percent: float) -> str:
-        """Get color name for CPU percentage value.
-
-        Args:
-            percent: Percentage value (0-100).
-
-        Returns:
-            Color name for Rich markup.
-
-        Thresholds:
-            - Green: < 20%
-            - Yellow: 20-50%
-            - Red: >= 50%
-        """
+        """Get color name for CPU percentage value."""
         if percent >= 50:
             return "red"
         elif percent >= 20:
@@ -282,19 +421,7 @@ class SystemHealthPanel(BasePanel):
             return "green"
 
     def _get_memory_color(self, percent: float) -> str:
-        """Get color name for memory percentage value.
-
-        Args:
-            percent: Percentage value (0-100).
-
-        Returns:
-            Color name for Rich markup.
-
-        Thresholds:
-            - Green: <= 50%
-            - Yellow: 50-80%
-            - Red: > 80%
-        """
+        """Get color name for memory percentage value."""
         if percent > 80:
             return "red"
         elif percent > 50:
@@ -303,20 +430,7 @@ class SystemHealthPanel(BasePanel):
             return "green"
 
     def _get_load_color(self, load: float, num_cores: int) -> str:
-        """Get color name for load average value.
-
-        Args:
-            load: Load average value.
-            num_cores: Number of CPU cores.
-
-        Returns:
-            Color name for Rich markup.
-
-        Thresholds:
-            - Green: load < 70% of cores
-            - Yellow: load 70-100% of cores
-            - Red: load > 100% of cores
-        """
+        """Get color name for load average value."""
         load_ratio = load / num_cores if num_cores > 0 else 0
         if load_ratio > 1.0:
             return "red"

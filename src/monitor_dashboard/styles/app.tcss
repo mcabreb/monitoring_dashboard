@@ -192,3 +192,14 @@ HistoryGraph {
 .process-medium {
     color: yellow;
 }
+
+/* Selection colors */
+.selected-cursor {
+    background: lightcyan;
+    color: black;
+}
+
+.selected-sticky {
+    background: darkcyan;
+    color: white;
+}
