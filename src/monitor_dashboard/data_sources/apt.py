@@ -1,6 +1,7 @@
 """Apt package upgrade data collection."""
 
 import logging
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -64,11 +65,15 @@ class AptCollector:
 
         try:
             # Run apt list --upgradable to get upgradable packages
+            # Use LC_ALL=C to force English output regardless of system locale
+            env = os.environ.copy()
+            env["LC_ALL"] = "C"
             result = subprocess.run(
                 ["apt", "list", "--upgradable"],
                 capture_output=True,
                 text=True,
                 timeout=30,
+                env=env,
             )
 
             if result.returncode != 0:
