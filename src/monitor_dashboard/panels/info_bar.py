@@ -4,7 +4,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Label
 
-from monitor_dashboard.data_sources.apt import AptStatus
+from monitor_dashboard.data_sources.apt import CACHE_STALE_THRESHOLD, AptStatus
 from monitor_dashboard.models.system_info import SystemInfo
 from monitor_dashboard.panels.base import BasePanel
 
@@ -71,8 +71,11 @@ class InfoBar(BasePanel):
             self._apt_label.update("Updates: [yellow]checking...[/yellow]")
             return
 
+        # Format cache age
+        cache_info = self._format_cache_age(apt_status.cache_age_seconds)
+
         if apt_status.upgradable_count == 0:
-            self._apt_label.update("Updates: [green]System is up to date[/green]")
+            self._apt_label.update(f"Updates: [green]System is up to date[/green]{cache_info}")
         else:
             # Color based on whether there are security updates
             if apt_status.security_count > 0:
@@ -85,8 +88,37 @@ class InfoBar(BasePanel):
             count = apt_status.upgradable_count
             pkg_word = "package" if count == 1 else "packages"
             self._apt_label.update(
-                f"Updates: [{color}]{count} {pkg_word} can be upgraded{security_note}[/{color}]"
+                f"Updates: [{color}]{count} {pkg_word} can be upgraded{security_note}[/{color}]{cache_info}"
             )
+
+    def _format_cache_age(self, cache_age_seconds: int | None) -> str:
+        """Format cache age for display.
+
+        Args:
+            cache_age_seconds: Cache age in seconds, or None if unknown.
+
+        Returns:
+            Formatted string with cache age info.
+        """
+        if cache_age_seconds is None:
+            return ""
+
+        # Format the age
+        if cache_age_seconds < 3600:
+            minutes = cache_age_seconds // 60
+            age_str = f"{minutes}m" if minutes > 0 else "<1m"
+        elif cache_age_seconds < 86400:
+            hours = cache_age_seconds // 3600
+            age_str = f"{hours}h"
+        else:
+            days = cache_age_seconds // 86400
+            age_str = f"{days}d"
+
+        # Add warning if cache is stale
+        if cache_age_seconds > CACHE_STALE_THRESHOLD:
+            return f" [yellow](cache: {age_str} old ⚠)[/yellow]"
+        else:
+            return f" [dim](cache: {age_str})[/dim]"
 
     def _get_uptime_color(self, uptime_seconds: int) -> str:
         """Get color for uptime based on thresholds.
