@@ -53,14 +53,41 @@ BasePanel:focus {
     column-span: 1;
 }
 
-/* Info bar - full width at bottom */
-#info-bar {
+/* Info bar - full width at bottom (in main dashboard) */
+#dashboard-container #info-bar {
     dock: bottom;
     height: 5;
     width: 100%;
     border: solid white;
     background: black;
     padding: 0 1;
+}
+
+#dashboard-container #info-bar:focus {
+    border: double cyan;
+}
+
+/* Info bar in expanded mode - full screen */
+#expanded-container #info-bar {
+    width: 100%;
+    height: 100%;
+    border: solid white;
+    background: black;
+    padding: 1;
+}
+
+#expanded-container #info-bar #info-content {
+    width: 100%;
+    height: 100%;
+}
+
+#expanded-container #info-bar #packages-list {
+    width: 100%;
+    height: 1fr;
+}
+
+#info-bar #packages-list Label {
+    content-align: left middle;
 }
 
 /* Labels within panels */

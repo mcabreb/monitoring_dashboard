@@ -16,13 +16,33 @@ CACHE_STALE_THRESHOLD = 24 * 3600
 
 
 @dataclass(frozen=True)
+class UpgradablePackage:
+    """Information about a single upgradable package."""
+
+    name: str  # Package name
+    current_version: str  # Currently installed version
+    new_version: str  # Available version
+    repository: str  # Repository source
+    is_security: bool  # Whether this is a security update
+
+
+@dataclass(frozen=True)
 class AptStatus:
     """Status of available apt upgrades."""
 
-    upgradable_count: int  # Number of packages that can be upgraded
-    security_count: int  # Number of security updates (if detectable)
+    packages: tuple[UpgradablePackage, ...]  # List of upgradable packages
     checked: bool  # Whether the check was successful
     cache_age_seconds: int | None  # Age of apt cache in seconds, None if unknown
+
+    @property
+    def upgradable_count(self) -> int:
+        """Number of packages that can be upgraded."""
+        return len(self.packages)
+
+    @property
+    def security_count(self) -> int:
+        """Number of security updates."""
+        return sum(1 for pkg in self.packages if pkg.is_security)
 
 
 class AptCollector:
@@ -55,6 +75,44 @@ class AptCollector:
             logger.debug(f"Failed to get apt cache age: {e}")
             return None
 
+    def _parse_package_line(self, line: str) -> UpgradablePackage | None:
+        """Parse a single apt list output line into an UpgradablePackage.
+
+        Args:
+            line: A line from apt list --upgradable output.
+
+        Returns:
+            UpgradablePackage or None if parsing fails.
+        """
+        # Format: package_name/repository version arch [upgradable from: old_version]
+        # Example: google-chrome-stable/stable 144.0.7559.96-1 amd64 [upgradable from: 144.0.7559.59-1]
+        try:
+            # Split name/repo from the rest
+            name_repo, rest = line.split(" ", 1)
+            name, repository = name_repo.split("/", 1)
+
+            # Extract new version (first part after name/repo)
+            parts = rest.split()
+            new_version = parts[0] if parts else "unknown"
+
+            # Extract old version from [upgradable from: X]
+            current_version = "unknown"
+            if "upgradable from:" in line:
+                current_version = line.split("upgradable from:")[-1].strip().rstrip("]")
+
+            is_security = "-security" in repository
+
+            return UpgradablePackage(
+                name=name,
+                current_version=current_version,
+                new_version=new_version,
+                repository=repository,
+                is_security=is_security,
+            )
+        except (ValueError, IndexError) as e:
+            logger.debug(f"Failed to parse package line '{line}': {e}")
+            return None
+
     def collect(self) -> AptStatus:
         """Check for available apt upgrades.
 
@@ -78,28 +136,31 @@ class AptCollector:
 
             if result.returncode != 0:
                 logger.debug(f"apt list failed: {result.stderr}")
-                return AptStatus(upgradable_count=0, security_count=0, checked=False, cache_age_seconds=cache_age)
+                return AptStatus(packages=(), checked=False, cache_age_seconds=cache_age)
 
             # Parse output - skip the "Listing..." header line
             lines = result.stdout.strip().split("\n")
-            upgradable = [line for line in lines if "/" in line and "upgradable" in line.lower()]
+            upgradable_lines = [line for line in lines if "/" in line and "upgradable" in line.lower()]
 
-            # Count security updates (packages from -security repositories)
-            security = [line for line in upgradable if "-security" in line]
+            # Parse each line into UpgradablePackage
+            packages = []
+            for line in upgradable_lines:
+                pkg = self._parse_package_line(line)
+                if pkg:
+                    packages.append(pkg)
 
             return AptStatus(
-                upgradable_count=len(upgradable),
-                security_count=len(security),
+                packages=tuple(packages),
                 checked=True,
                 cache_age_seconds=cache_age,
             )
 
         except subprocess.TimeoutExpired:
             logger.debug("apt list timed out")
-            return AptStatus(upgradable_count=0, security_count=0, checked=False, cache_age_seconds=cache_age)
+            return AptStatus(packages=(), checked=False, cache_age_seconds=cache_age)
         except FileNotFoundError:
             logger.debug("apt command not found")
-            return AptStatus(upgradable_count=0, security_count=0, checked=False, cache_age_seconds=cache_age)
+            return AptStatus(packages=(), checked=False, cache_age_seconds=cache_age)
         except Exception as e:
             logger.debug(f"Failed to check apt upgrades: {e}")
-            return AptStatus(upgradable_count=0, security_count=0, checked=False, cache_age_seconds=cache_age)
+            return AptStatus(packages=(), checked=False, cache_age_seconds=cache_age)

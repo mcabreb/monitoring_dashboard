@@ -5,6 +5,7 @@ from textual.containers import Container
 from textual.screen import Screen
 
 from monitor_dashboard.panels.devices import DevicesPanel
+from monitor_dashboard.panels.info_bar import InfoBar
 from monitor_dashboard.panels.logs import LogsPanel
 from monitor_dashboard.panels.processes import ProcessesPanel
 from monitor_dashboard.panels.system_health import SystemHealthPanel
@@ -48,6 +49,8 @@ class ExpandedPanelScreen(Screen):
                 return DevicesPanel(id=self.panel_id)
             case "logs":
                 return LogsPanel(id=self.panel_id)
+            case "info-bar":
+                return InfoBar(id=self.panel_id)
             case _:
                 # Default to system health if unknown panel ID
                 return SystemHealthPanel(id="system-health")

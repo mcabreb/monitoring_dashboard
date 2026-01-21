@@ -271,12 +271,13 @@ class MonitorDashboardApp(App):
             self.pop_screen()
             self.call_later(self._refresh_all)
 
-        # Get all focusable panels (exclude InfoBar)
+        # Get all focusable panels (including InfoBar)
         panels = [
             self.screen.query_one("#system-health"),
             self.screen.query_one("#processes"),
             self.screen.query_one("#devices"),
             self.screen.query_one("#logs"),
+            self.screen.query_one("#info-bar"),
         ]
 
         # Find current focused panel and move to next
@@ -309,12 +310,13 @@ class MonitorDashboardApp(App):
             self.pop_screen()
             self.call_later(self._refresh_all)
 
-        # Get all focusable panels (exclude InfoBar)
+        # Get all focusable panels (including InfoBar)
         panels = [
             self.screen.query_one("#system-health"),
             self.screen.query_one("#processes"),
             self.screen.query_one("#devices"),
             self.screen.query_one("#logs"),
+            self.screen.query_one("#info-bar"),
         ]
 
         # Find current focused panel and move to previous
@@ -425,7 +427,16 @@ class MonitorDashboardApp(App):
                 title = f"Info: {focused.id.replace('-', ' ').title()}"
             else:
                 title = "Info"
-            self.push_screen(InfoPopup(title, items))
+
+            # For logs panel, enable web search with the log message
+            search_query = None
+            if hasattr(focused, "id") and focused.id == "logs":
+                # Get the first log message for search
+                first_data = panel.get_element_data(element_ids[0])
+                if first_data and hasattr(first_data, "message"):
+                    search_query = first_data.message
+
+            self.push_screen(InfoPopup(title, items, search_query=search_query))
 
     def action_export_logs(self) -> None:
         """Export logs to ~/Downloads."""
@@ -544,7 +555,7 @@ class MonitorDashboardApp(App):
             if self.focused and hasattr(self.focused, "id"):
                 panel_id = self.focused.id
                 # Only expand if it's one of the main panels
-                if panel_id in ["system-health", "processes", "devices", "logs"]:
+                if panel_id in ["system-health", "processes", "devices", "logs", "info-bar"]:
                     self._stored_focus_id = panel_id
                     # Clear selections before expanding (reset on zoom)
                     self._clear_panel_selections(panel_id)
@@ -577,3 +588,4 @@ class MonitorDashboardApp(App):
         """Refresh all panel data immediately."""
         self._refresh_system_health()
         self._refresh_slow_data()
+        self._refresh_apt_status()
