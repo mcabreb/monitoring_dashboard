@@ -8,6 +8,19 @@ from pathlib import Path
 from textual.app import App
 from textual.binding import Binding
 
+from monitor_dashboard.constants import (
+    REFRESH_APT_CACHE_AGE,
+    REFRESH_APT_PACKAGES,
+    REFRESH_BATTERY,
+    REFRESH_CPU,
+    REFRESH_LOAD,
+    REFRESH_LOGS,
+    REFRESH_MEMORY,
+    REFRESH_PROCESSES,
+    REFRESH_STORAGE,
+    REFRESH_SYSTEM_INFO,
+    REFRESH_UPTIME,
+)
 from monitor_dashboard.data_sources import (
     AptCollector,
     BatteryCollector,
@@ -64,7 +77,7 @@ class MonitorDashboardApp(App):
         """Initialize the app by pushing the main dashboard screen."""
         self.push_screen(MainDashboard())
 
-        # Initialize data collectors and history buffers
+        # Initialize data collectors
         self._system_health_collector = SystemHealthCollector()
         self._storage_collector = StorageCollector()
         self._process_collector = ProcessCollector()
@@ -73,9 +86,18 @@ class MonitorDashboardApp(App):
         self._logs_collector = LogsCollector()
         self._system_info_collector = SystemInfoCollector()
         self._apt_collector = AptCollector()
+
+        # History buffers for graphs
         self._cpu_history = HistoryBuffer(maxlen=60)
         self._memory_history = HistoryBuffer(maxlen=60)
         self._load_history = HistoryBuffer(maxlen=60)
+
+        # Cached data for panels that need multiple data sources
+        self._cached_battery = None
+        self._cached_bluetooth = None
+        self._cached_storage = None
+        self._cached_system_info = None
+        self._cached_apt_status = None
 
         # Store focused panel ID for restoration after expansion
         self._stored_focus_id: str | None = None
@@ -86,37 +108,255 @@ class MonitorDashboardApp(App):
         # Track previous focused panel to clear selections on change
         self._previous_focused_panel_id: str | None = None
 
-        # Start refresh timers
-        # Fast refresh (1s): System health (CPU, memory, load)
-        self.set_interval(1.0, self._refresh_system_health)
-        # Slow refresh (10s): Storage, battery, Bluetooth, logs, system info
-        self.set_interval(10.0, self._refresh_slow_data)
-        # Very slow refresh (60 min): Apt upgrade check
-        self.set_interval(3600.0, self._refresh_apt_status)
-        # Initial data refresh
-        self.call_later(self._refresh_slow_data)
-        self.call_later(self._refresh_apt_status)
+        # =====================================================================
+        # Set up refresh timers with prime number intervals from constants.py
+        # =====================================================================
+
+        # System Health Panel timers
+        self.set_interval(REFRESH_CPU, self._refresh_cpu)
+        self.set_interval(REFRESH_MEMORY, self._refresh_memory)
+        self.set_interval(REFRESH_LOAD, self._refresh_load)
+
+        # Processes Panel timer
+        self.set_interval(REFRESH_PROCESSES, self._refresh_processes)
+
+        # Devices Panel timers
+        self.set_interval(REFRESH_BATTERY, self._refresh_battery)
+        self.set_interval(REFRESH_STORAGE, self._refresh_storage)
+
+        # Logs Panel timer
+        self.set_interval(REFRESH_LOGS, self._refresh_logs)
+
+        # Info Panel timers
+        self.set_interval(REFRESH_SYSTEM_INFO, self._refresh_system_info)
+        self.set_interval(REFRESH_UPTIME, self._refresh_uptime)
+        self.set_interval(REFRESH_APT_PACKAGES, self._refresh_apt_packages)
+        self.set_interval(REFRESH_APT_CACHE_AGE, self._refresh_apt_cache_age)
+
+        # =====================================================================
+        # Initial data refresh (order: Info, System Health, Devices, Processes, Logs)
+        # =====================================================================
+        self.call_later(self._initial_refresh)
+
+    def _initial_refresh(self) -> None:
+        """Perform initial data refresh in specified order."""
+        # Order: Info, System Health, Devices, Processes, Logs
+
+        # 1. Info Panel
+        self._refresh_system_info()
+        self._refresh_uptime()
+        self._refresh_apt_packages()
+
+        # 2. System Health Panel
+        self._refresh_cpu()
+        self._refresh_memory()
+        self._refresh_load()
+
+        # 3. Devices Panel
+        self._refresh_battery()
+        self._refresh_storage()
+
+        # 4. Processes Panel
+        self._refresh_processes()
+
+        # 5. Logs Panel
+        self._refresh_logs()
+
+    # =========================================================================
+    # System Health Panel refresh methods
+    # =========================================================================
+
+    def _refresh_cpu(self) -> None:
+        """Refresh CPU data."""
+        try:
+            metrics = self._system_health_collector.collect()
+            if metrics:
+                self._cpu_history.append(metrics.cpu_percent)
+                self._update_system_health_panel()
+        except Exception:
+            pass
+
+    def _refresh_memory(self) -> None:
+        """Refresh memory data."""
+        try:
+            metrics = self._system_health_collector.collect()
+            if metrics:
+                self._memory_history.append(metrics.memory_percent)
+                self._update_system_health_panel()
+        except Exception:
+            pass
+
+    def _refresh_load(self) -> None:
+        """Refresh load average data."""
+        try:
+            metrics = self._system_health_collector.collect()
+            if metrics:
+                self._load_history.append(metrics.load_avg[0])
+                self._update_system_health_panel()
+        except Exception:
+            pass
+
+    def _update_system_health_panel(self) -> None:
+        """Update the system health panel with current data."""
+        try:
+            metrics = self._system_health_collector.collect()
+            panel = self.screen.query_one("#system-health", SystemHealthPanel)
+            panel.update(
+                metrics,
+                self._cpu_history.get_values(),
+                self._memory_history.get_values(),
+                self._load_history.get_values(),
+            )
+        except Exception:
+            pass
+
+    # =========================================================================
+    # Processes Panel refresh methods
+    # =========================================================================
+
+    def _refresh_processes(self) -> None:
+        """Refresh process list."""
+        try:
+            processes = self._process_collector.collect(max_processes=50)
+            panel = self.screen.query_one("#processes", ProcessesPanel)
+            panel.update(processes)
+        except Exception:
+            pass
+
+    # =========================================================================
+    # Devices Panel refresh methods
+    # =========================================================================
+
+    def _refresh_battery(self) -> None:
+        """Refresh battery and Bluetooth data."""
+        try:
+            self._cached_battery = self._battery_collector.collect()
+            self._cached_bluetooth = self._bluetooth_collector.collect()
+            self._update_devices_panel()
+        except Exception:
+            pass
+
+    def _refresh_storage(self) -> None:
+        """Refresh storage/disk data."""
+        try:
+            self._cached_storage = self._storage_collector.collect()
+            self._update_devices_panel()
+        except Exception:
+            pass
+
+    def _update_devices_panel(self) -> None:
+        """Update the devices panel with cached data."""
+        try:
+            panel = self.screen.query_one("#devices", DevicesPanel)
+            panel.update(
+                self._cached_battery,
+                self._cached_bluetooth,
+                self._cached_storage,
+            )
+        except Exception:
+            pass
+
+    # =========================================================================
+    # Logs Panel refresh methods
+    # =========================================================================
+
+    def _refresh_logs(self) -> None:
+        """Refresh system logs."""
+        try:
+            logs = self._logs_collector.collect(max_entries=100)
+            panel = self.screen.query_one("#logs", LogsPanel)
+            panel.update(logs)
+        except Exception:
+            pass
+
+    # =========================================================================
+    # Info Panel refresh methods
+    # =========================================================================
+
+    def _refresh_system_info(self) -> None:
+        """Refresh system info (hostname, distro, kernel)."""
+        try:
+            self._cached_system_info = self._system_info_collector.collect()
+            self._update_info_panel()
+        except Exception:
+            pass
+
+    def _refresh_uptime(self) -> None:
+        """Refresh uptime display."""
+        try:
+            # Recalculate uptime from cached boot_time
+            if self._cached_system_info and self._cached_system_info.boot_time:
+                from monitor_dashboard.models.system_info import SystemInfo
+
+                uptime_seconds = int(
+                    (datetime.now() - self._cached_system_info.boot_time).total_seconds()
+                )
+                # Create updated SystemInfo with new uptime
+                self._cached_system_info = SystemInfo(
+                    hostname=self._cached_system_info.hostname,
+                    kernel=self._cached_system_info.kernel,
+                    distro=self._cached_system_info.distro,
+                    uptime_seconds=uptime_seconds,
+                    boot_time=self._cached_system_info.boot_time,
+                )
+                self._update_info_panel()
+        except Exception:
+            pass
+
+    def _refresh_apt_packages(self) -> None:
+        """Refresh apt upgradable packages list."""
+        try:
+            self._cached_apt_status = self._apt_collector.collect()
+            self._update_info_panel_apt()
+        except Exception:
+            pass
+
+    def _refresh_apt_cache_age(self) -> None:
+        """Refresh apt cache age display."""
+        try:
+            if self._cached_apt_status:
+                # Recalculate cache age
+                cache_age = self._apt_collector._get_cache_age()
+                from monitor_dashboard.data_sources.apt import AptStatus
+
+                self._cached_apt_status = AptStatus(
+                    packages=self._cached_apt_status.packages,
+                    checked=self._cached_apt_status.checked,
+                    cache_age_seconds=cache_age,
+                )
+                self._update_info_panel_apt()
+        except Exception:
+            pass
+
+    def _update_info_panel(self) -> None:
+        """Update info panel with system info."""
+        try:
+            panel = self.screen.query_one("#info-bar", InfoBar)
+            panel.update(self._cached_system_info)
+        except Exception:
+            pass
+
+    def _update_info_panel_apt(self) -> None:
+        """Update info panel with apt status."""
+        try:
+            panel = self.screen.query_one("#info-bar", InfoBar)
+            panel.update_apt(self._cached_apt_status)
+        except Exception:
+            pass
+
+    # =========================================================================
+    # Panel selection and focus management
+    # =========================================================================
 
     def _get_focused_panel(self) -> SelectableMixin | None:
-        """Get the currently focused panel if it supports selection.
-
-        Returns:
-            The focused panel with SelectableMixin, or None.
-        """
+        """Get the currently focused panel if it supports selection."""
         focused = self.focused
         if focused and isinstance(focused, SelectableMixin):
             return focused
         return None
 
     def _get_panel_by_id(self, panel_id: str) -> SelectableMixin | None:
-        """Get a panel by its ID.
-
-        Args:
-            panel_id: The panel's ID.
-
-        Returns:
-            The panel with SelectableMixin, or None.
-        """
+        """Get a panel by its ID."""
         try:
             panel = self.screen.query_one(f"#{panel_id}")
             if isinstance(panel, SelectableMixin):
@@ -126,152 +366,43 @@ class MonitorDashboardApp(App):
         return None
 
     def _clear_panel_selections(self, panel_id: str) -> None:
-        """Clear all selections in a panel.
-
-        Args:
-            panel_id: The panel's ID.
-        """
+        """Clear all selections in a panel."""
         panel = self._get_panel_by_id(panel_id)
         if panel:
             panel.clear_selections()
-        # Also clear stored state
         if panel_id in self._selection_states:
             del self._selection_states[panel_id]
 
     def _save_panel_selection_state(self, panel_id: str) -> None:
-        """Save a panel's selection state.
-
-        Args:
-            panel_id: The panel's ID.
-        """
+        """Save a panel's selection state."""
         panel = self._get_panel_by_id(panel_id)
         if panel:
             self._selection_states[panel_id] = panel.get_selection_state()
 
     def _restore_panel_selection_state(self, panel_id: str) -> None:
-        """Restore a panel's selection state.
-
-        Args:
-            panel_id: The panel's ID.
-        """
+        """Restore a panel's selection state."""
         if panel_id in self._selection_states:
             panel = self._get_panel_by_id(panel_id)
             if panel:
                 panel.set_selection_state(self._selection_states[panel_id])
 
     def _on_panel_focus_changed(self, new_panel_id: str | None) -> None:
-        """Handle focus changing to a new panel.
-
-        Clears selections in the previously focused panel.
-
-        Args:
-            new_panel_id: ID of newly focused panel, or None.
-        """
+        """Handle focus changing to a new panel."""
         if self._previous_focused_panel_id and self._previous_focused_panel_id != new_panel_id:
             self._clear_panel_selections(self._previous_focused_panel_id)
         self._previous_focused_panel_id = new_panel_id
 
-    def _refresh_system_health(self) -> None:
-        """Refresh system health data at 1 Hz."""
-        try:
-            # Collect system health metrics
-            metrics = self._system_health_collector.collect()
-            if metrics:
-                self._cpu_history.append(metrics.cpu_percent)
-                self._memory_history.append(metrics.memory_percent)
-                # Track 1-minute load average
-                self._load_history.append(metrics.load_avg[0])
-
-            # Update system health panel
-            try:
-                panel = self.screen.query_one("#system-health", SystemHealthPanel)
-                panel.update(
-                    metrics,
-                    self._cpu_history.get_values(),
-                    self._memory_history.get_values(),
-                    self._load_history.get_values(),
-                )
-            except Exception:
-                pass
-
-        except Exception:
-            pass
-
-    def _refresh_slow_data(self) -> None:
-        """Refresh slow-changing data every 10 seconds.
-
-        Updates processes, devices (storage/battery/Bluetooth), logs, and system info.
-        """
-        try:
-            # Collect storage metrics (for devices panel)
-            disks = self._storage_collector.collect()
-
-            # Collect and update processes panel
-            try:
-                processes = self._process_collector.collect(max_processes=50)
-                panel = self.screen.query_one("#processes", ProcessesPanel)
-                panel.update(processes)
-            except Exception:
-                pass
-
-            # Collect battery and Bluetooth metrics
-            battery = self._battery_collector.collect()
-            bluetooth_devices = self._bluetooth_collector.collect()
-
-            # Update devices panel (now includes storage)
-            try:
-                panel = self.screen.query_one("#devices", DevicesPanel)
-                panel.update(battery, bluetooth_devices, disks)
-            except Exception:
-                pass
-
-            # Collect logs
-            logs = self._logs_collector.collect(max_entries=100)
-
-            # Update logs panel
-            try:
-                panel = self.screen.query_one("#logs", LogsPanel)
-                panel.update(logs)
-            except Exception:
-                pass
-
-            # Collect system info
-            system_info = self._system_info_collector.collect()
-
-            # Update info bar
-            try:
-                panel = self.screen.query_one("#info-bar", InfoBar)
-                panel.update(system_info)
-            except Exception:
-                pass
-
-        except Exception:
-            pass
-
-    def _refresh_apt_status(self) -> None:
-        """Refresh apt upgrade status every 60 minutes."""
-        try:
-            apt_status = self._apt_collector.collect()
-
-            # Update info bar with apt status
-            try:
-                panel = self.screen.query_one("#info-bar", InfoBar)
-                panel.update_apt(apt_status)
-            except Exception:
-                pass
-
-        except Exception:
-            pass
+    # =========================================================================
+    # Key bindings / actions
+    # =========================================================================
 
     def action_focus_next(self) -> None:
         """Move focus to next panel in cycle."""
-        # Collapse expanded view first, then navigate
         if isinstance(self.screen, ExpandedPanelScreen):
             self._save_panel_selection_state(self.screen.panel_id)
             self.pop_screen()
             self.call_later(self._refresh_all)
 
-        # Get all focusable panels (including InfoBar)
         panels = [
             self.screen.query_one("#system-health"),
             self.screen.query_one("#processes"),
@@ -280,7 +411,6 @@ class MonitorDashboardApp(App):
             self.screen.query_one("#info-bar"),
         ]
 
-        # Find current focused panel and move to next
         try:
             current_id = self._stored_focus_id
             current_idx = next(
@@ -299,18 +429,15 @@ class MonitorDashboardApp(App):
             self._on_panel_focus_changed(panels[next_idx].id)
             panels[next_idx].focus()
         except Exception:
-            # Fallback: focus first panel
             panels[0].focus()
 
     def action_focus_previous(self) -> None:
         """Move focus to previous panel in cycle."""
-        # Collapse expanded view first, then navigate
         if isinstance(self.screen, ExpandedPanelScreen):
             self._save_panel_selection_state(self.screen.panel_id)
             self.pop_screen()
             self.call_later(self._refresh_all)
 
-        # Get all focusable panels (including InfoBar)
         panels = [
             self.screen.query_one("#system-health"),
             self.screen.query_one("#processes"),
@@ -319,7 +446,6 @@ class MonitorDashboardApp(App):
             self.screen.query_one("#info-bar"),
         ]
 
-        # Find current focused panel and move to previous
         try:
             current_id = self._stored_focus_id
             current_idx = next(
@@ -338,7 +464,6 @@ class MonitorDashboardApp(App):
             self._on_panel_focus_changed(panels[prev_idx].id)
             panels[prev_idx].focus()
         except Exception:
-            # Fallback: focus last panel
             panels[-1].focus()
 
     def action_select_next(self) -> None:
@@ -395,7 +520,6 @@ class MonitorDashboardApp(App):
         if not panel:
             return
 
-        # Get selected elements (sticky if any, otherwise cursor)
         sticky_ids = panel.get_sticky_ids()
         cursor_id = panel.get_cursor_id()
 
@@ -407,12 +531,10 @@ class MonitorDashboardApp(App):
             self.push_screen(ErrorPopup("No Selection", "No element selected"))
             return
 
-        # Build info items
         items = []
         for element_id in element_ids:
             data = panel.get_element_data(element_id)
             if data:
-                # Format based on data type
                 if hasattr(data, "details") and data.details:
                     items.append({"label": getattr(data, "label", element_id), "details": data.details})
                 elif hasattr(data, "__dict__"):
@@ -421,17 +543,14 @@ class MonitorDashboardApp(App):
                     items.append({"label": element_id, "details": str(data)})
 
         if items:
-            # Determine title based on panel type
             focused = self.focused
             if hasattr(focused, "id"):
                 title = f"Info: {focused.id.replace('-', ' ').title()}"
             else:
                 title = "Info"
 
-            # For logs panel, enable web search with the log message
             search_query = None
             if hasattr(focused, "id") and focused.id == "logs":
-                # Get the first log message for search
                 first_data = panel.get_element_data(element_ids[0])
                 if first_data and hasattr(first_data, "message"):
                     search_query = first_data.message
@@ -440,7 +559,6 @@ class MonitorDashboardApp(App):
 
     def action_export_logs(self) -> None:
         """Export logs to ~/Downloads."""
-        # Only works in logs panel
         focused = self.focused
         if not hasattr(focused, "id") or focused.id != "logs":
             return
@@ -450,33 +568,27 @@ class MonitorDashboardApp(App):
         except Exception:
             return
 
-        # Get logs to export
         sticky_ids = panel.get_sticky_ids()
         if sticky_ids:
-            # Export only sticky-selected logs
             logs_to_export = []
             for log_id in sticky_ids:
                 log = panel.get_element_data(log_id)
                 if log:
                     logs_to_export.append(log)
         else:
-            # Export all logs
             logs_to_export = panel.get_all_logs()
 
         if not logs_to_export:
             self.push_screen(ErrorPopup("No Logs", "No logs to export"))
             return
 
-        # Create Downloads folder if needed
         downloads_dir = Path.home() / "Downloads"
         downloads_dir.mkdir(exist_ok=True)
 
-        # Generate filename with timestamp
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
         filename = f"logs_{timestamp}.txt"
         filepath = downloads_dir / filename
 
-        # Write logs
         try:
             with open(filepath, "w") as f:
                 for log in logs_to_export:
@@ -487,7 +599,6 @@ class MonitorDashboardApp(App):
 
     def action_kill_process(self) -> None:
         """Kill selected process (with confirmation)."""
-        # Only works in processes panel
         focused = self.focused
         if not hasattr(focused, "id") or focused.id != "processes":
             return
@@ -497,7 +608,6 @@ class MonitorDashboardApp(App):
         except Exception:
             return
 
-        # Check for sticky selections (not allowed for kill)
         sticky_ids = panel.get_sticky_ids()
         if sticky_ids:
             self.push_screen(
@@ -509,7 +619,6 @@ class MonitorDashboardApp(App):
             )
             return
 
-        # Get cursor selection
         cursor_id = panel.get_cursor_id()
         if not cursor_id:
             self.push_screen(ErrorPopup("No Selection", "No process selected"))
@@ -519,7 +628,6 @@ class MonitorDashboardApp(App):
         if not process:
             return
 
-        # Check if it's a user process (not root/system)
         current_user = os.getenv("USER", "")
         if process.user != current_user:
             self.push_screen(
@@ -531,7 +639,6 @@ class MonitorDashboardApp(App):
             )
             return
 
-        # Show confirmation popup
         def handle_kill_confirm(confirmed: bool) -> None:
             if confirmed:
                 try:
@@ -548,29 +655,22 @@ class MonitorDashboardApp(App):
     def action_toggle_expand(self) -> None:
         """Toggle between expanded and normal view."""
         if isinstance(self.screen, ExpandedPanelScreen):
-            # Already expanded, collapse back to main dashboard
             self.action_collapse()
         else:
-            # Expand the currently focused panel
             if self.focused and hasattr(self.focused, "id"):
                 panel_id = self.focused.id
-                # Only expand if it's one of the main panels
                 if panel_id in ["system-health", "processes", "devices", "logs", "info-bar"]:
                     self._stored_focus_id = panel_id
-                    # Clear selections before expanding (reset on zoom)
                     self._clear_panel_selections(panel_id)
                     self.push_screen(ExpandedPanelScreen(panel_id))
-                    # Trigger immediate refresh after screen transition
                     self.call_later(self._refresh_all)
 
     def action_collapse(self) -> None:
         """Return to main dashboard from expanded view."""
         if isinstance(self.screen, ExpandedPanelScreen):
             panel_id = self.screen.panel_id
-            # Clear selections before collapsing (reset on zoom)
             self._clear_panel_selections(panel_id)
             self.pop_screen()
-            # Restore focus after screen transition
             self.call_later(self._restore_focus)
             self.call_later(self._refresh_all)
 
@@ -581,11 +681,8 @@ class MonitorDashboardApp(App):
                 panel = self.screen.query_one(f"#{self._stored_focus_id}")
                 panel.focus()
             except Exception:
-                # Panel not found, ignore
                 pass
 
     def _refresh_all(self) -> None:
         """Refresh all panel data immediately."""
-        self._refresh_system_health()
-        self._refresh_slow_data()
-        self._refresh_apt_status()
+        self._initial_refresh()
