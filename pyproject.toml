@@ -17,6 +17,7 @@ dependencies = [
     "pyyaml>=6.0.1",
     "pydbus>=0.6.0",
     "pyperclip>=1.8.2",
+    "ddgs>=9.10.0",
 ]
 
 [project.optional-dependencies]

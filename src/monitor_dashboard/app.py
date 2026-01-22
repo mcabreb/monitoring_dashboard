@@ -76,6 +76,9 @@ class MonitorDashboardApp(App):
 
     def on_mount(self) -> None:
         """Initialize the app by pushing the main dashboard screen."""
+        # Resize terminal window to preferred size
+        self.action_resize_window()
+
         self.push_screen(MainDashboard())
 
         # Initialize data collectors
@@ -693,24 +696,15 @@ class MonitorDashboardApp(App):
         self._initial_refresh()
 
     def action_resize_window(self) -> None:
-        """Resize the terminal window to 1800x600 pixels."""
+        """Resize the terminal window using escape sequences (works on Wayland)."""
+        import os
+
+        # Write directly to terminal device, bypassing Textual's stdout capture
+        # Use xterm-style escape sequence for pixel resize: ESC[4;height;widtht
         try:
-            from Xlib import X, display
-            from Xlib.protocol import event
-
-            d = display.Display()
-            root = d.screen().root
-
-            # Get the active window
-            active_window_atom = d.intern_atom("_NET_ACTIVE_WINDOW")
-            active_window_id = root.get_full_property(active_window_atom, X.AnyPropertyType)
-
-            if active_window_id:
-                window_id = active_window_id.value[0]
-                window = d.create_resource_object("window", window_id)
-
-                # Resize the window to 1800x600
-                window.configure(width=1800, height=600)
-                d.sync()
-        except Exception:
-            pass
+            with open("/dev/tty", "w") as tty:
+                tty.write("\x1b[4;370;3200t")
+                tty.flush()
+        except OSError:
+            # Fallback: try stdout if /dev/tty fails
+            os.write(1, b"\x1b[4;370;32:3200t")
