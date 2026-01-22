@@ -75,7 +75,7 @@ mkdir -p ~/.local/bin
 # Create the launcher script (adjust the path to where you cloned the repo)
 cat > ~/.local/bin/monitor-dashboard << 'EOF'
 #!/bin/bash
-cd ~/workspace/local/monitoring_dashboard && uv run monitor-dashboard "$@"
+cd ~/monitoring_dashboard && uv run monitor-dashboard "$@"
 EOF
 
 # Make it executable
