@@ -70,6 +70,7 @@ class MonitorDashboardApp(App):
         Binding("l", "export_logs", "Export Logs", show=False),
         Binding("k", "kill_process", "Kill Process", show=False),
         Binding("question_mark", "show_help", "Help"),
+        Binding("w", "resize_window", "Resize Window", show=False),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -217,8 +218,12 @@ class MonitorDashboardApp(App):
     def _refresh_processes(self) -> None:
         """Refresh process list."""
         try:
-            processes = self._process_collector.collect(max_processes=50)
             panel = self.screen.query_one("#processes", ProcessesPanel)
+            # Calculate max_processes based on panel height (1 row per process + 1 header)
+            # Use minimum of 50 to ensure reasonable coverage even when panel is small
+            panel_height = panel.content_size.height if panel.content_size else 50
+            max_processes = max(50, panel_height + 10)  # Add buffer for scrolling
+            processes = self._process_collector.collect(max_processes=max_processes)
             panel.update(processes)
         except Exception:
             pass
@@ -686,3 +691,26 @@ class MonitorDashboardApp(App):
     def _refresh_all(self) -> None:
         """Refresh all panel data immediately."""
         self._initial_refresh()
+
+    def action_resize_window(self) -> None:
+        """Resize the terminal window to 1800x600 pixels."""
+        try:
+            from Xlib import X, display
+            from Xlib.protocol import event
+
+            d = display.Display()
+            root = d.screen().root
+
+            # Get the active window
+            active_window_atom = d.intern_atom("_NET_ACTIVE_WINDOW")
+            active_window_id = root.get_full_property(active_window_atom, X.AnyPropertyType)
+
+            if active_window_id:
+                window_id = active_window_id.value[0]
+                window = d.create_resource_object("window", window_id)
+
+                # Resize the window to 1800x600
+                window.configure(width=1800, height=600)
+                d.sync()
+        except Exception:
+            pass

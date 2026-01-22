@@ -100,7 +100,7 @@ class LogsPanel(BasePanel, SelectableMixin):
         for log in self._display_logs:
             element_id = log.raw
             text = f"{log.timestamp.strftime('%H:%M:%S')} {log.message}"
-            label = Label(text)
+            label = Label(text, markup=False)
 
             # Apply selection styling first (takes precedence)
             selection_class = self.get_selection_class(element_id)
