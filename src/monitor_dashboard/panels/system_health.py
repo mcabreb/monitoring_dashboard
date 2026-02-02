@@ -55,6 +55,7 @@ class HistoryGraph(Static):
         self._history: list[float] = []
         self._threshold_type = threshold_type
         self._num_cores = num_cores
+        self._graph_width = self.GRAPH_WIDTH
 
     def update_history(self, history: list[float], num_cores: int | None = None) -> None:
         """Update the graph with new history data.
@@ -66,6 +67,12 @@ class HistoryGraph(Static):
         self._history = history
         if num_cores is not None:
             self._num_cores = num_cores
+        self._render_graph()
+
+    def set_width(self, width: int) -> None:
+        """Change the graph width (number of data columns) and update CSS."""
+        self._graph_width = width
+        self.styles.width = width
         self._render_graph()
 
     def _get_color_for_value(self, value: float) -> str:
@@ -106,8 +113,8 @@ class HistoryGraph(Static):
 
     def _render_graph(self) -> None:
         """Render the history graph with threshold-based colors."""
-        # Take the last GRAPH_WIDTH values for display
-        data = self._history[-self.GRAPH_WIDTH :] if self._history else []
+        # Take the last graph_width values for display
+        data = self._history[-self._graph_width :] if self._history else []
 
         # For load graphs, scale is 0 to 2*num_cores (200% of capacity)
         # For CPU/memory, scale is 0 to 100
@@ -126,7 +133,7 @@ class HistoryGraph(Static):
 
             line_parts = []
             # Data grows left to right: empty space on the RIGHT if not enough data
-            for i in range(self.GRAPH_WIDTH):
+            for i in range(self._graph_width):
                 if i < len(data):
                     value = data[i]
                     color = self._get_color_for_value(value)
@@ -169,12 +176,15 @@ class SystemHealthPanel(BasePanel, SelectableMixin):
         self._mem_graph: HistoryGraph | None = None
         self._load_stats: Vertical | None = None
         self._load_graph: HistoryGraph | None = None
+        self._load_spacer: Label | None = None
+        self._load_row: Horizontal | None = None
         # Store metrics for selection data access
         self._metrics: SystemMetrics | None = None
         self._metric_items: list[MetricItem] = []
         self._cpu_history: list[float] = []
         self._memory_history: list[float] = []
         self._load_history: list[float] = []
+        self._compact: bool = False
 
     def compose(self) -> ComposeResult:
         """Compose the System Health panel content."""
@@ -202,10 +212,12 @@ class SystemHealthPanel(BasePanel, SelectableMixin):
                 yield self._mem_graph
 
             # Spacer before load
-            yield Label("")
+            self._load_spacer = Label("")
+            yield self._load_spacer
 
             # Load section: stats on left, graph on right
-            with Horizontal(classes="stats-row"):
+            self._load_row = Horizontal(classes="stats-row")
+            with self._load_row:
                 self._load_stats = Vertical(classes="stats-col")
                 yield self._load_stats
                 self._load_graph = HistoryGraph(
@@ -214,6 +226,23 @@ class SystemHealthPanel(BasePanel, SelectableMixin):
                 yield self._load_graph
 
         yield self._container
+
+    def set_compact(self, enabled: bool) -> None:
+        """Toggle compact mode — hides per-core CPU rows and load section."""
+        self._compact = enabled
+        if self._load_spacer:
+            self._load_spacer.display = not enabled
+        if self._load_row:
+            self._load_row.display = not enabled
+        # Resize graphs to half width in compact mode
+        graph_width = HistoryGraph.GRAPH_WIDTH // 2 if enabled else HistoryGraph.GRAPH_WIDTH
+        if self._cpu_graph:
+            self._cpu_graph.set_width(graph_width)
+        if self._mem_graph:
+            self._mem_graph.set_width(graph_width)
+        # Rebuild metric items and re-render
+        self._build_metric_items()
+        self._display()
 
     def get_selectable_ids(self) -> list[str]:
         """Return list of selectable element IDs."""
@@ -274,16 +303,17 @@ class SystemHealthPanel(BasePanel, SelectableMixin):
             details={"type": "cpu", "percent": metrics.cpu_percent},
         ))
 
-        # CPU per core
-        for i, core_pct in enumerate(metrics.cpu_per_core):
-            color = self._get_percent_color(core_pct)
-            self._metric_items.append(MetricItem(
-                id=f"core-{i}",
-                label=f"#{i}",
-                value=format_percent(core_pct),
-                color=color,
-                details={"type": "core", "core_num": i, "percent": core_pct},
-            ))
+        # CPU per core (skip in compact mode)
+        if not self._compact:
+            for i, core_pct in enumerate(metrics.cpu_per_core):
+                color = self._get_percent_color(core_pct)
+                self._metric_items.append(MetricItem(
+                    id=f"core-{i}",
+                    label=f"#{i}",
+                    value=format_percent(core_pct),
+                    color=color,
+                    details={"type": "core", "core_num": i, "percent": core_pct},
+                ))
 
         # Memory
         mem_color = self._get_memory_color(metrics.memory_percent)
@@ -302,23 +332,24 @@ class SystemHealthPanel(BasePanel, SelectableMixin):
             },
         ))
 
-        # Load
-        num_cores = len(metrics.cpu_per_core)
-        load_1, load_5, load_15 = metrics.load_avg
-        load_color = self._get_load_color(load_1, num_cores)
-        self._metric_items.append(MetricItem(
-            id="load",
-            label="Load",
-            value=f"{load_1:.2f} (1m)  {load_5:.2f} (5m)  {load_15:.2f} (15m)",
-            color=load_color,
-            details={
-                "type": "load",
-                "load_1m": load_1,
-                "load_5m": load_5,
-                "load_15m": load_15,
-                "num_cores": num_cores,
-            },
-        ))
+        # Load (skip in compact mode)
+        if not self._compact:
+            num_cores = len(metrics.cpu_per_core)
+            load_1, load_5, load_15 = metrics.load_avg
+            load_color = self._get_load_color(load_1, num_cores)
+            self._metric_items.append(MetricItem(
+                id="load",
+                label="Load",
+                value=f"{load_1:.2f} (1m)  {load_5:.2f} (5m)  {load_15:.2f} (15m)",
+                color=load_color,
+                details={
+                    "type": "load",
+                    "load_1m": load_1,
+                    "load_5m": load_5,
+                    "load_15m": load_15,
+                    "num_cores": num_cores,
+                },
+            ))
 
         # Prune sticky selections for items that no longer exist
         self.prune_invalid_sticky()
@@ -367,28 +398,29 @@ class SystemHealthPanel(BasePanel, SelectableMixin):
                 cursor_widget = label
             self._cpu_stats.mount(label)
 
-        # CPU per core - display in rows of 4 (like original)
-        cores = metrics.cpu_per_core
-        cores_per_row = 4
-        for i in range(0, len(cores), cores_per_row):
-            row_cores = cores[i : i + cores_per_row]
-            core_strs = []
-            row_has_cursor = False
-            for j, c in enumerate(row_cores):
-                core_idx = i + j
-                core_id = f"core-{core_idx}"
-                core_item = self.get_element_data(core_id)
-                if core_item:
-                    prefix, suffix = self._get_selection_markup(core_id)
-                    color = core_item.color
-                    # Selection only on the identifier part, not the percentage
-                    core_strs.append(f"{prefix}#{core_idx}:{suffix} [{color}]{format_percent(c)}[/{color}]")
-                    if self.is_cursor(core_id):
-                        row_has_cursor = True
-            label = Label("  " + "  ".join(core_strs))
-            if row_has_cursor:
-                cursor_widget = label
-            self._cpu_stats.mount(label)
+        # CPU per core - display in rows of 4 (skip in compact mode)
+        if not self._compact:
+            cores = metrics.cpu_per_core
+            cores_per_row = 4
+            for i in range(0, len(cores), cores_per_row):
+                row_cores = cores[i : i + cores_per_row]
+                core_strs = []
+                row_has_cursor = False
+                for j, c in enumerate(row_cores):
+                    core_idx = i + j
+                    core_id = f"core-{core_idx}"
+                    core_item = self.get_element_data(core_id)
+                    if core_item:
+                        prefix, suffix = self._get_selection_markup(core_id)
+                        color = core_item.color
+                        # Selection only on the identifier part, not the percentage
+                        core_strs.append(f"{prefix}#{core_idx}:{suffix} [{color}]{format_percent(c)}[/{color}]")
+                        if self.is_cursor(core_id):
+                            row_has_cursor = True
+                label = Label("  " + "  ".join(core_strs))
+                if row_has_cursor:
+                    cursor_widget = label
+                self._cpu_stats.mount(label)
 
         # Memory section
         mem_item = self.get_element_data("memory")
@@ -400,32 +432,33 @@ class SystemHealthPanel(BasePanel, SelectableMixin):
                 cursor_widget = label
             self._mem_stats.mount(label)
 
-        # Load section
-        load_item = self.get_element_data("load")
-        if load_item:
-            # Color each load value individually
-            num_cores = len(cores)
-            load_1, load_5, load_15 = metrics.load_avg
-            load_1_color = self._get_load_color(load_1, num_cores)
-            load_5_color = self._get_load_color(load_5, num_cores)
-            load_15_color = self._get_load_color(load_15, num_cores)
-            prefix, suffix = self._get_selection_markup("load")
-            load_text = (
-                f"{prefix}Load:{suffix} [{load_1_color}]{load_1:.2f}[/{load_1_color}] (1m)  "
-                f"[{load_5_color}]{load_5:.2f}[/{load_5_color}] (5m)  "
-                f"[{load_15_color}]{load_15:.2f}[/{load_15_color}] (15m)"
-            )
-            label = Label(load_text)
-            if self.is_cursor("load"):
-                cursor_widget = label
-            self._load_stats.mount(label)
+        # Load section (skip in compact mode)
+        if not self._compact:
+            load_item = self.get_element_data("load")
+            if load_item:
+                # Color each load value individually
+                num_cores = len(metrics.cpu_per_core)
+                load_1, load_5, load_15 = metrics.load_avg
+                load_1_color = self._get_load_color(load_1, num_cores)
+                load_5_color = self._get_load_color(load_5, num_cores)
+                load_15_color = self._get_load_color(load_15, num_cores)
+                prefix, suffix = self._get_selection_markup("load")
+                load_text = (
+                    f"{prefix}Load:{suffix} [{load_1_color}]{load_1:.2f}[/{load_1_color}] (1m)  "
+                    f"[{load_5_color}]{load_5:.2f}[/{load_5_color}] (5m)  "
+                    f"[{load_15_color}]{load_15:.2f}[/{load_15_color}] (15m)"
+                )
+                label = Label(load_text)
+                if self.is_cursor("load"):
+                    cursor_widget = label
+                self._load_stats.mount(label)
 
         # Update graphs
         if self._cpu_graph and self._cpu_history:
             self._cpu_graph.update_history(self._cpu_history)
         if self._mem_graph and self._memory_history:
             self._mem_graph.update_history(self._memory_history)
-        if self._load_graph and self._load_history:
+        if not self._compact and self._load_graph and self._load_history:
             num_cores = len(metrics.cpu_per_core)
             self._load_graph.update_history(self._load_history, num_cores=num_cores)
 

@@ -24,7 +24,8 @@ HELP_TEXT = """[b]Keyboard Help[/b]
 [green]p[/green]            Cycle process sort column
 [green]k[/green]            Kill process (Processes only)
 [green]l[/green]            Export logs (Logs only)
-[green]w[/green]            Resize window to 1800x600
+[green]z[/green]            Toggle zoom mode
+[green]w[/green]            Resize window
 
 [green]?[/green]            Show this help
 [green]q[/green]            Quit application

@@ -20,6 +20,10 @@ from monitor_dashboard.constants import (
     REFRESH_STORAGE,
     REFRESH_SYSTEM_INFO,
     REFRESH_UPTIME,
+    WINDOW_NORMAL_HEIGHT,
+    WINDOW_NORMAL_WIDTH,
+    WINDOW_ZOOM_HEIGHT,
+    WINDOW_ZOOM_WIDTH,
 )
 from monitor_dashboard.data_sources import (
     AptCollector,
@@ -70,16 +74,23 @@ class MonitorDashboardApp(App):
         Binding("l", "export_logs", "Export Logs", show=False),
         Binding("k", "kill_process", "Kill Process", show=False),
         Binding("question_mark", "show_help", "Help"),
+        Binding("z", "toggle_zoom", "Toggle Zoom"),
         Binding("w", "resize_window", "Resize Window", show=False),
         Binding("q", "quit", "Quit"),
     ]
 
     def on_mount(self) -> None:
         """Initialize the app by pushing the main dashboard screen."""
-        # Resize terminal window to preferred size
+        # Zoom mode: starts enabled (compact quarter-size view)
+        self._zoom_mode = True
+
+        # Resize terminal window to zoom size
         self.action_resize_window()
 
         self.push_screen(MainDashboard())
+
+        # Apply zoom layout after screen is mounted
+        self.call_later(self._apply_zoom_mode)
 
         # Initialize data collectors
         self._system_health_collector = SystemHealthCollector()
@@ -165,6 +176,18 @@ class MonitorDashboardApp(App):
 
         # 5. Logs Panel
         self._refresh_logs()
+
+    def _apply_zoom_mode(self) -> None:
+        """Apply current zoom mode to the main dashboard and panels."""
+        try:
+            if isinstance(self.screen, MainDashboard):
+                self.screen.set_zoom_mode(self._zoom_mode)
+                health = self.screen.query_one("#system-health", SystemHealthPanel)
+                health.set_compact(self._zoom_mode)
+                procs = self.screen.query_one("#processes", ProcessesPanel)
+                procs.set_compact(self._zoom_mode)
+        except Exception:
+            pass
 
     # =========================================================================
     # System Health Panel refresh methods
@@ -411,13 +434,14 @@ class MonitorDashboardApp(App):
             self.pop_screen()
             self.call_later(self._refresh_all)
 
-        panels = [
+        all_panels = [
             self.screen.query_one("#system-health"),
             self.screen.query_one("#processes"),
             self.screen.query_one("#devices"),
             self.screen.query_one("#logs"),
             self.screen.query_one("#info-bar"),
         ]
+        panels = [p for p in all_panels if p.display]
 
         try:
             current_id = self._stored_focus_id
@@ -446,13 +470,14 @@ class MonitorDashboardApp(App):
             self.pop_screen()
             self.call_later(self._refresh_all)
 
-        panels = [
+        all_panels = [
             self.screen.query_one("#system-health"),
             self.screen.query_one("#processes"),
             self.screen.query_one("#devices"),
             self.screen.query_one("#logs"),
             self.screen.query_one("#info-bar"),
         ]
+        panels = [p for p in all_panels if p.display]
 
         try:
             current_id = self._stored_focus_id
@@ -476,36 +501,48 @@ class MonitorDashboardApp(App):
 
     def action_select_next(self) -> None:
         """Select next element in focused panel."""
+        if self._zoom_mode:
+            return
         panel = self._get_focused_panel()
         if panel:
             panel.select_next()
 
     def action_select_previous(self) -> None:
         """Select previous element in focused panel."""
+        if self._zoom_mode:
+            return
         panel = self._get_focused_panel()
         if panel:
             panel.select_previous()
 
     def action_toggle_sticky(self) -> None:
         """Toggle sticky selection on current element."""
+        if self._zoom_mode:
+            return
         panel = self._get_focused_panel()
         if panel:
             panel.toggle_sticky()
 
     def action_clear_sticky(self) -> None:
         """Clear all sticky selections in focused panel."""
+        if self._zoom_mode:
+            return
         panel = self._get_focused_panel()
         if panel:
             panel.clear_sticky_selections()
 
     def action_select_first(self) -> None:
         """Select first element in focused panel."""
+        if self._zoom_mode:
+            return
         panel = self._get_focused_panel()
         if panel:
             panel.select_first()
 
     def action_select_last(self) -> None:
         """Select last element in focused panel."""
+        if self._zoom_mode:
+            return
         panel = self._get_focused_panel()
         if panel:
             panel.select_last()
@@ -662,6 +699,8 @@ class MonitorDashboardApp(App):
 
     def action_toggle_expand(self) -> None:
         """Toggle between expanded and normal view."""
+        if self._zoom_mode:
+            return
         if isinstance(self.screen, ExpandedPanelScreen):
             self.action_collapse()
         else:
@@ -699,12 +738,40 @@ class MonitorDashboardApp(App):
         """Resize the terminal window using escape sequences (works on Wayland)."""
         import os
 
+        if self._zoom_mode:
+            width, height = WINDOW_ZOOM_WIDTH, WINDOW_ZOOM_HEIGHT
+        else:
+            width, height = WINDOW_NORMAL_WIDTH, WINDOW_NORMAL_HEIGHT
+
         # Write directly to terminal device, bypassing Textual's stdout capture
         # Use xterm-style escape sequence for pixel resize: ESC[4;height;widtht
         try:
             with open("/dev/tty", "w") as tty:
-                tty.write("\x1b[4;370;3200t")
+                tty.write(f"\x1b[4;{height};{width}t")
                 tty.flush()
         except OSError:
             # Fallback: try stdout if /dev/tty fails
-            os.write(1, b"\x1b[4;370;32:3200t")
+            os.write(1, f"\x1b[4;{height};{width}t".encode())
+
+    def action_toggle_zoom(self) -> None:
+        """Toggle between zoom (compact) and normal dashboard mode."""
+        # Block toggling while on expanded panel screen
+        if isinstance(self.screen, ExpandedPanelScreen):
+            return
+
+        self._zoom_mode = not self._zoom_mode
+        self.action_resize_window()
+        self._apply_zoom_mode()
+
+        # If focus is on a now-hidden panel, redirect to system-health
+        if self._zoom_mode and self.focused and hasattr(self.focused, "id"):
+            if self.focused.id in ("devices", "logs", "info-bar"):
+                try:
+                    panel = self.screen.query_one("#system-health", SystemHealthPanel)
+                    self._stored_focus_id = "system-health"
+                    self._on_panel_focus_changed("system-health")
+                    panel.focus()
+                except Exception:
+                    pass
+
+        self._refresh_all()

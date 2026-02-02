@@ -34,3 +34,11 @@ REFRESH_SYSTEM_INFO = 13 * 3600  # Hostname, distro, kernel (13 hours)
 REFRESH_UPTIME = 61  # Uptime display
 REFRESH_APT_PACKAGES = 61 * 60  # Apt upgradable packages (61 minutes)
 REFRESH_APT_CACHE_AGE = 73  # Apt cache age check
+
+# =============================================================================
+# WINDOW SIZE CONSTANTS (pixels)
+# =============================================================================
+WINDOW_NORMAL_WIDTH = 3200
+WINDOW_NORMAL_HEIGHT = 370
+WINDOW_ZOOM_WIDTH = 1200
+WINDOW_ZOOM_HEIGHT = 220

@@ -46,11 +46,17 @@ class ProcessesPanel(BasePanel, SelectableMixin):
         self._sort_column: SortColumn = SortColumn.CPU
         self._processes: list[ProcessInfo] | None = None
         self._sorted_processes: list[ProcessInfo] = []
+        self._compact: bool = False
 
     def compose(self) -> ComposeResult:
         """Compose the Processes panel content."""
         self._container = VerticalScroll()
         yield self._container
+
+    def set_compact(self, enabled: bool) -> None:
+        """Toggle compact mode — shows only CPU, MEM, TIME, COMMAND columns."""
+        self._compact = enabled
+        self._display()
 
     def get_selectable_ids(self) -> list[str]:
         """Return list of selectable element IDs (PIDs as strings)."""
@@ -123,13 +129,16 @@ class ProcessesPanel(BasePanel, SelectableMixin):
             Formatted header string with sort indicator on active column.
         """
         # Column headers with sort indicator
-        pid = "PID▼" if self._sort_column == SortColumn.PID else "PID"
-        user = "USER▼" if self._sort_column == SortColumn.USER else "USER"
         cpu = "CPU▼" if self._sort_column == SortColumn.CPU else "CPU"
         mem = "MEM▼" if self._sort_column == SortColumn.MEM else "MEM"
         time = "TIME▼" if self._sort_column == SortColumn.TIME else "TIME"
         cmd = "COMMAND▼" if self._sort_column == SortColumn.COMMAND else "COMMAND"
 
+        if self._compact:
+            return f"{cpu:>5} {mem:>5} {time:>10} {cmd}"
+
+        pid = "PID▼" if self._sort_column == SortColumn.PID else "PID"
+        user = "USER▼" if self._sort_column == SortColumn.USER else "USER"
         return f"{pid:>7} {user:<10} {cpu:>5} {mem:>5} {time:>10} {cmd}"
 
     def _display(self) -> None:
@@ -157,13 +166,16 @@ class ProcessesPanel(BasePanel, SelectableMixin):
             element_id = str(proc.pid)
 
             # Format each field - no truncation, let view handle clipping
-            pid_str = f"{proc.pid:>7}"
-            user_str = f"{proc.user[:10]:<10}"
             cpu_str = f"{proc.cpu_percent:>5.1f}"
             mem_str = f"{proc.memory_percent:>5.1f}"
             time_str = f"{proc.time:>10}"
 
-            line = f"{pid_str} {user_str} {cpu_str} {mem_str} {time_str} {proc.command}"
+            if self._compact:
+                line = f"{cpu_str} {mem_str} {time_str} {proc.command}"
+            else:
+                pid_str = f"{proc.pid:>7}"
+                user_str = f"{proc.user[:10]:<10}"
+                line = f"{pid_str} {user_str} {cpu_str} {mem_str} {time_str} {proc.command}"
             label = Label(line)
 
             # Apply selection styling first (takes precedence)
