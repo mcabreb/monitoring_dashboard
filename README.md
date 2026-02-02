@@ -12,9 +12,19 @@ A Linux system monitoring dashboard built with Textual, providing real-time insi
 - **Logs** - System logs from journalctl with severity highlighting
 - **Info Bar** - System info, uptime, and apt upgrade status with cache age
 
+### Zoom Mode (Compact View)
+
+The app starts in **zoom mode** by default — a compact, quarter-size terminal showing only:
+
+- **System Health** — global CPU and memory with half-width graphs (no per-core or load)
+- **Processes** — CPU, MEM, TIME, and COMMAND columns only (no PID or USER)
+
+Press `z` to toggle between zoom and normal mode. In zoom mode, panel expansion and item selection are disabled; Tab cycles only the two visible panels.
+
 ### Key Features
 
 - Real-time monitoring with configurable refresh intervals
+- Zoom mode for a compact at-a-glance view (default on startup)
 - Expandable panels for detailed views
 - Element selection with sticky multi-select
 - Process management (sort, view details, kill)
@@ -118,7 +128,8 @@ Now you can run `monitor-dashboard` from any directory.
 | `p` | Cycle process sort column (CPU, MEM, TIME, COMMAND, PID, USER) |
 | `k` | Kill selected process (Processes panel only) |
 | `l` | Export logs to file (Logs panel only) |
-| `w` | Resize window to preferred size |
+| `z` | Toggle zoom mode (compact/normal) |
+| `w` | Resize window |
 | `?` | Show help overlay |
 | `q` | Quit application |
 
