@@ -40,5 +40,5 @@ REFRESH_APT_CACHE_AGE = 73  # Apt cache age check
 # =============================================================================
 WINDOW_NORMAL_WIDTH = 3200
 WINDOW_NORMAL_HEIGHT = 370
-WINDOW_ZOOM_WIDTH = 1200
-WINDOW_ZOOM_HEIGHT = 220
+WINDOW_COMPACT_WIDTH = 1200
+WINDOW_COMPACT_HEIGHT = 220

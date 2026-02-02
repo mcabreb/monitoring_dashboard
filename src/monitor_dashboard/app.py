@@ -22,8 +22,8 @@ from monitor_dashboard.constants import (
     REFRESH_UPTIME,
     WINDOW_NORMAL_HEIGHT,
     WINDOW_NORMAL_WIDTH,
-    WINDOW_ZOOM_HEIGHT,
-    WINDOW_ZOOM_WIDTH,
+    WINDOW_COMPACT_HEIGHT,
+    WINDOW_COMPACT_WIDTH,
 )
 from monitor_dashboard.data_sources import (
     AptCollector,
@@ -739,7 +739,7 @@ class MonitorDashboardApp(App):
         import os
 
         if self._zoom_mode:
-            width, height = WINDOW_ZOOM_WIDTH, WINDOW_ZOOM_HEIGHT
+            width, height = WINDOW_COMPACT_WIDTH, WINDOW_COMPACT_HEIGHT
         else:
             width, height = WINDOW_NORMAL_WIDTH, WINDOW_NORMAL_HEIGHT
 
