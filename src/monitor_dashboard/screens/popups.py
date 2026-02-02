@@ -6,6 +6,7 @@ from textual.binding import Binding
 from textual.containers import Container, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Label, Static
+from textual.worker import Worker, WorkerState
 
 from monitor_dashboard.utils.formatting import format_bytes
 
@@ -103,10 +104,24 @@ class InfoPopup(ModalScreen):
 
     #info-popup-footer {
         width: 100%;
-        height: 1;
+        height: auto;
         content-align: center middle;
         color: gray;
         margin-top: 1;
+    }
+
+    .search-result-title {
+        color: yellow;
+        text-style: bold;
+    }
+
+    .search-result-snippet {
+        color: white;
+    }
+
+    .search-status {
+        color: cyan;
+        text-style: italic;
     }
     """
 
@@ -116,16 +131,25 @@ class InfoPopup(ModalScreen):
         Binding("q", "dismiss", "Close"),
     ]
 
-    def __init__(self, title: str, items: list[dict[str, Any]], **kwargs) -> None:
+    def __init__(
+        self,
+        title: str,
+        items: list[dict[str, Any]],
+        search_query: str | None = None,
+        **kwargs,
+    ) -> None:
         """Initialize info popup.
 
         Args:
             title: Popup title.
             items: List of item dicts with 'label' and 'details' keys.
+            search_query: Optional query for web search (enables 's' key).
         """
         super().__init__(**kwargs)
         self._title = title
         self._items = items
+        self._search_query = search_query
+        self._search_performed = False
 
     def compose(self):
         """Compose the info popup content."""
@@ -148,12 +172,77 @@ class InfoPopup(ModalScreen):
 
                     yield Label("")  # Spacer between items
 
-            yield Static("[dim]Press any key to close[/dim]", id="info-popup-footer")
+            # Footer with search hint if available
+            if self._search_query:
+                yield Static(
+                    "[dim]Press [bold]s[/bold] to search  |  any other key to close[/dim]",
+                    id="info-popup-footer",
+                )
+            else:
+                yield Static("[dim]Press any key to close[/dim]", id="info-popup-footer")
 
     def on_key(self, event) -> None:
-        """Dismiss on any key press."""
+        """Handle key press - search on 's', dismiss on other keys."""
         event.stop()
+
+        # Handle 's' key for search
+        if event.key == "s" and self._search_query and not self._search_performed:
+            self._perform_search()
+            return
+
         self.dismiss()
+
+    def _perform_search(self) -> None:
+        """Perform web search and display results."""
+        # Update UI to show searching status
+        content = self.query_one("#info-popup-content", VerticalScroll)
+
+        # Add searching indicator
+        content.mount(Label("[cyan]Searching...[/cyan]", classes="search-status"))
+
+        # Run search in background to not block UI
+        self.run_worker(self._do_search, exclusive=True, thread=True)
+
+    def _do_search(self) -> list:
+        """Background worker to perform search (runs in thread)."""
+        from monitor_dashboard.utils.web_search import search_for_error
+
+        return search_for_error(self._search_query, max_results=3)
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        """Handle worker completion."""
+        if event.worker.name == "_do_search" and event.state == WorkerState.SUCCESS:
+            self._display_search_results(event.worker.result)
+
+    def _display_search_results(self, results) -> None:
+        """Display search results in the popup."""
+        self._search_performed = True
+
+        content = self.query_one("#info-popup-content", VerticalScroll)
+
+        # Remove the "Searching..." label
+        for child in content.query(".search-status"):
+            child.remove()
+
+        # Add search results header
+        content.mount(Label("[bold yellow]--- Web Search ---[/bold yellow]"))
+
+        if not results:
+            content.mount(Label("[dim]No relevant results found[/dim]"))
+        else:
+            result = results[0]  # Show only first result
+
+            # Title
+            title = result.title[:80] + "..." if len(result.title) > 80 else result.title
+            content.mount(Label(f"[yellow]{title}[/yellow]", classes="search-result-title"))
+
+            # Snippet (allow more text for single result)
+            snippet = result.snippet[:250] + "..." if len(result.snippet) > 250 else result.snippet
+            content.mount(Label(f"  {snippet}", classes="search-result-snippet"))
+
+        # Update footer
+        footer = self.query_one("#info-popup-footer", Static)
+        footer.update("[dim]Press any key to close[/dim]")
 
 
 class ErrorPopup(ModalScreen):
